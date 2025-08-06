@@ -19,6 +19,20 @@
             </Dropdown>
           </li>
           <li>
+            <Dropdown @on-click="filterBySort">
+              <span>{{query.sort === '' ? this.$i18n.t('m.Sort') : this.$i18n.t('m.' + query.sort)}}
+                <Icon type="arrow-down-b"></Icon>
+              </span>
+              <Dropdown-menu slot="list">
+                <Dropdown-item name="">{{$t('m.Default')}}</Dropdown-item>
+                <Dropdown-item name="id">{{$t('m.By_ID')}}</Dropdown-item>
+                <Dropdown-item name="difficulty">{{$t('m.By_Difficulty')}}</Dropdown-item>
+                <Dropdown-item name="submission_number">{{$t('m.By_Submissions')}}</Dropdown-item>
+                <Dropdown-item name="accepted_number">{{$t('m.By_Accepted')}}</Dropdown-item>
+              </Dropdown-menu>
+            </Dropdown>
+          </li>
+          <li>
             <i-switch size="large" @on-change="handleTagsVisible">
               <span slot="open">{{$t('m.Tags')}}</span>
               <span slot="close">{{$t('m.Tags')}}</span>
@@ -170,6 +184,7 @@
           keyword: '',
           difficulty: '',
           tag: '',
+          sort: '',
           page: 1,
           limit: 10
         }
@@ -185,6 +200,7 @@
         this.query.difficulty = query.difficulty || ''
         this.query.keyword = query.keyword || ''
         this.query.tag = query.tag || ''
+        this.query.sort = query.sort || ''
         this.query.page = parseInt(query.page) || 1
         if (this.query.page < 1) {
           this.query.page = 1
@@ -230,6 +246,11 @@
       },
       filterByDifficulty (difficulty) {
         this.query.difficulty = difficulty
+        this.query.page = 1
+        this.pushRouter()
+      },
+      filterBySort (sort) {
+        this.query.sort = sort
         this.query.page = 1
         this.pushRouter()
       },
