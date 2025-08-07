@@ -17,10 +17,6 @@ import {
   UserHome
 } from '../views'
 
-import WorkbookList from '../views/workbook/WorkbookList.vue'
-import WorkbookProblems from '../views/workbook/WorkbookProblems.vue'
-
-
 import * as Contest from '@oj/views/contest'
 import * as Setting from '@oj/views/setting'
 
@@ -66,18 +62,6 @@ export default [
     path: '/problem/:problemID',
     meta: { title: 'Problem Details' },
     component: Problem
-  },
-  {
-    name: 'workbook-list',
-    path: '/workbook',
-    meta: {title: 'Workbook List'},
-    component: WorkbookList
-  },
-  {
-    name: 'workbook-problems',
-    path: '/workbook/:workbookID',
-    meta: {title: 'Workbook Problems'},
-    component: WorkbookProblems
   },
   {
     name: 'submission-list',
