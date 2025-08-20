@@ -19,13 +19,7 @@ async def login(req):
     token = await _get_token(req)
     session_token = await exchange_sso_for_local_token(token)
     logging.info(f"     login request: session_token = {session_token}")
-    return {
-        "key": TOKEN_NAME,
-        "value": session_token,
-        "httponly": True,
-        "max_age": TOKEN_TTL_SECONDS,
-        "samesite": "Strict",
-    }
+    return _create_cookie_data(session_token, TOKEN_TTL_SECONDS)
 
 
 async def logout(req: Request):
@@ -34,13 +28,7 @@ async def logout(req: Request):
     redis = await get_redis()
     redis_key = f"{REDIS_SESSION_PREFIX}{token}"
     await redis.delete(redis_key)
-    return {
-        "key": TOKEN_NAME,
-        "value": "",
-        "httponly": True,
-        "max_age": 0,
-        "samesite": "Strict",
-    }
+    return _create_cookie_data("", 0)
 
 
 async def _get_token(req):
@@ -48,3 +36,13 @@ async def _get_token(req):
     if not token:
         raise HTTPException(status_code=400, detail="bad request")
     return token
+
+
+async def _create_cookie_data(value: str, age: int):
+    return {
+        "key": TOKEN_NAME,
+        "value": value,
+        "httponly": True,
+        "max_age": age,
+        "samesite": "Strict",
+    }
