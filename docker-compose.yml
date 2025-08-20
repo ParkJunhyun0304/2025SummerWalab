@@ -71,18 +71,3 @@ services:
     ports:
       - "0.0.0.0:80:8000"
       - "0.0.0.0:443:1443"
-
-  my-spring:
-    build: ./test-project-oj
-    container_name: my-spring
-    environment:
-      - SPRING_DATASOURCE_URL=jdbc:postgresql://oj-postgres:5432/onlinejudge
-      - SPRING_DATASOURCE_USERNAME=onlinejudge
-      - SPRING_DATASOURCE_PASSWORD=onlinejudge
-      - SPRING_REDIS_HOST=oj-redis
-      - SPRING_REDIS_PORT=6379
-    depends_on:
-      - oj-postgres
-      - oj-redis
-    ports:
-      - "8080:8080"
