@@ -9,7 +9,6 @@
         <p>Built with by Walab</p>
         <p>Powered by <a href="https://github.com/QingdaoU/OnlineJudge">OnlineJudge</a></p>
           <span v-if="version">&nbsp; Version: {{ version }}</span>
-        </p>
       </div>
     </div>
     <BackTop></BackTop>
