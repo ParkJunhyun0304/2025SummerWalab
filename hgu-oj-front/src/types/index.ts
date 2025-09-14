@@ -32,6 +32,9 @@ export interface Problem {
     username: string;
     realName?: string;
   };
+  // Optional fields from OJ profile enrichment
+  myStatus?: string;
+  solved?: boolean;
 }
 
 // 제출 관련 타입

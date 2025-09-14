@@ -25,14 +25,7 @@ export const authService = {
 
   // Micro-service 로그인
   loginToMicroService: async (token: string): Promise<void> => {
-    await fetch('http://localhost:8000/api/auth/login', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      credentials: 'include',
-      body: JSON.stringify({ token }),
-    });
+    await api.post<void>('/auth/login', { token });
   },
 
   // 사용자 프로필 조회
@@ -47,10 +40,7 @@ export const authService = {
     await api.get('/logout');
     
     // Micro-service 로그아웃
-    await fetch('http://localhost:8000/api/auth/logout', {
-      method: 'POST',
-      credentials: 'include',
-    });
+    await api.post<void>('/auth/logout');
   },
 
   // 인증 상태 확인

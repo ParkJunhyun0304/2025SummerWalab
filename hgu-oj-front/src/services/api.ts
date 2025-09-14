@@ -40,74 +40,44 @@ apiClient.interceptors.response.use(
   }
 );
 
-// API 메서드들
+// API 메서드들 (백엔드 응답 형태 이중 지원)
+// - 형태 A: { error: null, data: T }
+// - 형태 B: T (plain payload)
+const normalize = <T>(res: any) => {
+  const body = res.data;
+  const hasWrapper = body && typeof body === 'object' && Object.prototype.hasOwnProperty.call(body, 'error');
+  if (hasWrapper) {
+    return {
+      success: body.error === null,
+      data: body.data as T,
+      message: body.error ? String(body.data) : undefined,
+    };
+  }
+  return {
+    success: true,
+    data: body as T,
+  };
+};
 export const api = {
   // GET 요청
   get: <T>(url: string, params?: any): Promise<ApiResponse<T>> =>
-    apiClient.get(url, { params }).then((res) => {
-      const response = res.data;
-      if (response.error) {
-        throw new Error(response.data || 'API Error');
-      }
-      return {
-        success: true,
-        data: response.data,
-        message: response.error ? response.data : undefined
-      };
-    }),
+    apiClient.get(url, { params }).then((res) => normalize<T>(res)),
 
   // POST 요청
   post: <T>(url: string, data?: any): Promise<ApiResponse<T>> =>
-    apiClient.post(url, data).then((res) => {
-      const response = res.data;
-      return {
-        success: response.error === null,
-        data: response.data,
-        message: response.error ? response.data : undefined
-      };
-    }),
+    apiClient.post(url, data).then((res) => normalize<T>(res)),
 
   // PUT 요청
   put: <T>(url: string, data?: any): Promise<ApiResponse<T>> =>
-    apiClient.put(url, data).then((res) => {
-      const response = res.data;
-      if (response.error) {
-        throw new Error(response.data || 'API Error');
-      }
-      return {
-        success: true,
-        data: response.data,
-        message: response.error ? response.data : undefined
-      };
-    }),
+    apiClient.put(url, data).then((res) => normalize<T>(res)),
 
   // DELETE 요청
   delete: <T>(url: string): Promise<ApiResponse<T>> =>
-    apiClient.delete(url).then((res) => {
-      const response = res.data;
-      if (response.error) {
-        throw new Error(response.data || 'API Error');
-      }
-      return {
-        success: true,
-        data: response.data,
-        message: response.error ? response.data : undefined
-      };
-    }),
+    apiClient.delete(url).then((res) => normalize<T>(res)),
 
   // PATCH 요청
   patch: <T>(url: string, data?: any): Promise<ApiResponse<T>> =>
-    apiClient.patch(url, data).then((res) => {
-      const response = res.data;
-      if (response.error) {
-        throw new Error(response.data || 'API Error');
-      }
-      return {
-        success: true,
-        data: response.data,
-        message: response.error ? response.data : undefined
-      };
-    }),
+    apiClient.patch(url, data).then((res) => normalize<T>(res)),
 };
 
 export { apiClient };
