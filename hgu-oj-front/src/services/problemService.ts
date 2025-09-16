@@ -1,6 +1,20 @@
 import { api } from './api';
 import { Problem, PaginatedResponse, ProblemFilter } from '../types';
 
+const normalizeStatusValue = (status: any): string | undefined => {
+  if (status === null || status === undefined) return undefined;
+  const normalized = String(status).trim();
+  if (normalized.length === 0) return undefined;
+  return normalized;
+};
+
+const isAcceptedStatus = (status: any): boolean => {
+  const normalized = normalizeStatusValue(status);
+  if (!normalized) return false;
+  const upper = normalized.toUpperCase();
+  return upper === 'AC' || upper === 'ACCEPTED' || upper === '0';
+};
+
 // 적응형 매퍼: 마이크로서비스 또는 OJ 백엔드 형태 모두 지원
 const adaptProblem = (p: any): Problem => {
   if (!p) {
@@ -36,16 +50,14 @@ const adaptProblem = (p: any): Problem => {
       tags: Array.isArray(p.tags) ? p.tags.map((t: any) => t.name) : undefined,
       languages: p.languages || undefined,
       createdBy: p.created_by || undefined,
-      myStatus: p.my_status || p.myStatus,
-      solved: !!(p.my_status && String(p.my_status).toUpperCase() === 'AC') ||
-              !!(p.myStatus && String(p.myStatus).toUpperCase() === 'AC'),
+      myStatus: normalizeStatusValue(p.my_status ?? p.myStatus),
+      solved: isAcceptedStatus(p.my_status ?? p.myStatus),
     } as Problem;
   }
   // Assume already in frontend camelCase schema
-  const solved = p.my_status ? String(p.my_status).toUpperCase() === 'AC'
-               : p.myStatus ? String(p.myStatus).toUpperCase() === 'AC'
-               : p.solved;
-  return { ...(p as Problem), myStatus: p.my_status || p.myStatus || (p as any).myStatus, solved } as Problem;
+  const rawStatus = normalizeStatusValue(p.my_status ?? p.myStatus ?? (p as any).myStatus);
+  const solved = rawStatus !== undefined ? isAcceptedStatus(rawStatus) : p.solved;
+  return { ...(p as Problem), myStatus: rawStatus, solved } as Problem;
 };
 
 export const problemService = {

@@ -1,11 +1,146 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useProblem } from '../hooks/useProblems';
 import { CodeEditor } from '../components/organisms/CodeEditor';
-import { Card } from '../components/atoms/Card';
 import { Button } from '../components/atoms/Button';
 import { ExecutionResult } from '../types';
 import { executionService } from '../services/executionService';
+import { submissionService } from '../services/submissionService';
+
+type StatusTone = 'success' | 'error' | 'warning' | 'info';
+
+interface StatusDisplayMeta {
+  label: string;
+  message?: string;
+  tone: StatusTone;
+  code?: string;
+}
+
+interface StatusToneStyle {
+  container: string;
+  label: string;
+  message: string;
+  iconColor: string;
+  badge: string;
+  icon: React.ReactNode;
+}
+
+const toneStyles: Record<StatusTone, StatusToneStyle> = {
+  success: {
+    container: 'bg-green-50 border-green-200',
+    label: 'text-green-900',
+    message: 'text-green-700',
+    iconColor: 'text-green-500',
+    badge: 'bg-green-100 text-green-700 border-green-200',
+    icon: (
+      <svg
+        width="20"
+        height="20"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+      >
+        <circle cx="12" cy="12" r="9" />
+        <polyline points="9 12.5 11 14.5 15 10.5" />
+      </svg>
+    ),
+  },
+  error: {
+    container: 'bg-red-50 border-red-200',
+    label: 'text-red-900',
+    message: 'text-red-700',
+    iconColor: 'text-red-500',
+    badge: 'bg-red-100 text-red-700 border-red-200',
+    icon: (
+      <svg
+        width="20"
+        height="20"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+      >
+        <circle cx="12" cy="12" r="9" />
+        <line x1="9" y1="9" x2="15" y2="15" />
+        <line x1="15" y1="9" x2="9" y2="15" />
+      </svg>
+    ),
+  },
+  warning: {
+    container: 'bg-amber-50 border-amber-200',
+    label: 'text-amber-900',
+    message: 'text-amber-700',
+    iconColor: 'text-amber-500',
+    badge: 'bg-amber-100 text-amber-700 border-amber-200',
+    icon: (
+      <svg
+        width="20"
+        height="20"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+      >
+        <path d="M12 3 2 21h20L12 3z" />
+        <line x1="12" y1="9.5" x2="12" y2="13.5" />
+        <line x1="12" y1="17" x2="12.01" y2="17" />
+      </svg>
+    ),
+  },
+  info: {
+    container: 'bg-blue-50 border-blue-200',
+    label: 'text-blue-900',
+    message: 'text-blue-700',
+    iconColor: 'text-blue-500',
+    badge: 'bg-blue-100 text-blue-700 border-blue-200',
+    icon: (
+      <svg
+        width="20"
+        height="20"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+      >
+        <circle cx="12" cy="12" r="9" />
+        <line x1="12" y1="10" x2="12" y2="16" />
+        <line x1="12" y1="7.5" x2="12.01" y2="7.5" />
+      </svg>
+    ),
+  },
+};
+
+const judgeResultToStatus: Record<string, string> = {
+  '-2': 'CE',
+  '-1': 'WA',
+  '0': 'AC',
+  '1': 'TLE',
+  '2': 'TLE',
+  '3': 'MLE',
+  '4': 'RE',
+  '5': 'SE',
+  '6': 'PENDING',
+  '7': 'JUDGING',
+  '8': 'PAC',
+  '9': 'SUBMITTING',
+};
+
+const MAX_SUBMISSION_POLL_ATTEMPTS = 60;
+const progressStatuses = new Set(['PENDING', 'JUDGING', 'RUNNING', 'SUBMITTED', 'SUBMITTING']);
 
 export const ProblemDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -13,9 +148,13 @@ export const ProblemDetailPage: React.FC = () => {
   const problemId = id ? parseInt(id, 10) : 0;
 
   const { data: problem, isLoading, error } = useProblem(problemId);
+  const queryClient = useQueryClient();
   const [executionResult, setExecutionResult] = useState<ExecutionResult | undefined>();
   const [isExecuting, setIsExecuting] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [manualStatus, setManualStatus] = useState<string | undefined>();
+  const submissionPollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const submissionPollAttemptsRef = useRef(0);
 
   // Layout states: left/right resizable and collapsible
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -74,6 +213,64 @@ export const ProblemDetailPage: React.FC = () => {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
+  const stopSubmissionPolling = useCallback(() => {
+    if (submissionPollTimerRef.current) {
+      clearTimeout(submissionPollTimerRef.current);
+      submissionPollTimerRef.current = null;
+    }
+  }, []);
+
+  const mapJudgeResult = useCallback((value: number | string | undefined) => {
+    if (value === null || value === undefined) return undefined;
+    const mapped = judgeResultToStatus[String(value)];
+    return mapped;
+  }, []);
+
+  const startSubmissionPolling = useCallback((submissionId: number | string) => {
+    if (!submissionId) return;
+    if (typeof submissionId === 'number' && Number.isNaN(submissionId)) return;
+    stopSubmissionPolling();
+    submissionPollAttemptsRef.current = 0;
+
+    const poll = async () => {
+      try {
+        submissionPollAttemptsRef.current += 1;
+        const detail = await submissionService.getSubmission(submissionId);
+        const fallbackStatus = typeof detail?.status === 'string'
+          ? detail.status.trim().toUpperCase()
+          : undefined;
+        const nextStatus = mapJudgeResult(detail?.result as number | string | undefined) ?? fallbackStatus;
+        const normalizedStatus = nextStatus ? String(nextStatus).trim().toUpperCase() : undefined;
+        const normalizedKey = normalizedStatus ? normalizedStatus.replace(/\s+/g, '_') : undefined;
+        if (normalizedStatus) {
+          setManualStatus(normalizedStatus);
+        }
+        const stats = detail?.statistic_info;
+        const hasStats = !!stats && typeof stats === 'object' && Object.keys(stats as Record<string, unknown>).length > 0;
+        const isProgress = normalizedStatus
+          ? progressStatuses.has(normalizedStatus) || (normalizedKey ? progressStatuses.has(normalizedKey) : false)
+          : false;
+        const reachedAttemptLimit = submissionPollAttemptsRef.current >= MAX_SUBMISSION_POLL_ATTEMPTS;
+        if (hasStats || (!isProgress && normalizedStatus) || reachedAttemptLimit) {
+          if (problemId > 0) {
+            queryClient.invalidateQueries({ queryKey: ['problem', problemId] });
+          }
+          stopSubmissionPolling();
+          return;
+        }
+      } catch (pollError) {
+        if (problemId > 0) {
+          queryClient.invalidateQueries({ queryKey: ['problem', problemId] });
+        }
+        stopSubmissionPolling();
+        return;
+      }
+      submissionPollTimerRef.current = setTimeout(poll, 2000);
+    };
+
+    submissionPollTimerRef.current = setTimeout(poll, 1000);
+  }, [mapJudgeResult, problemId, queryClient, stopSubmissionPolling]);
+
   const handleExecute = async (code: string, language: string, input?: string) => {
     setIsExecuting(true);
     try {
@@ -123,19 +320,127 @@ export const ProblemDetailPage: React.FC = () => {
   const handleSubmit = async (code: string, language: string) => {
     setIsSubmitting(true);
     try {
-      // TODO: 실제 API 호출로 대체
-      // await submitSolution({ problemId, code, language });
-      
-      // 임시 처리
-      setTimeout(() => {
-        alert('제출이 완료되었습니다!');
-        setIsSubmitting(false);
-      }, 1000);
-    } catch (err) {
-      alert('제출 중 오류가 발생했습니다.');
+      const result = await submissionService.submitSolution({
+        problemId,
+        code,
+        language,
+      });
+
+      const submissionIdRaw = (result?.submissionId ?? result?.id) as number | string | undefined;
+      const hasSubmissionId = typeof submissionIdRaw === 'number'
+        ? !Number.isNaN(submissionIdRaw)
+        : typeof submissionIdRaw === 'string'
+          ? submissionIdRaw.trim().length > 0
+          : false;
+      const successMessage = hasSubmissionId
+        ? `제출이 완료되었습니다! (제출 번호: ${submissionIdRaw})`
+        : '제출이 완료되었습니다!';
+      if (hasSubmissionId && submissionIdRaw != null) {
+        setManualStatus('SUBMITTING');
+        startSubmissionPolling(submissionIdRaw);
+      } else {
+        setManualStatus('SUBMITTED');
+      }
+      alert(successMessage);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : '제출 중 오류가 발생했습니다.';
+      alert(message);
+    } finally {
       setIsSubmitting(false);
     }
   };
+
+  useEffect(() => {
+    setManualStatus(undefined);
+    stopSubmissionPolling();
+    submissionPollAttemptsRef.current = 0;
+  }, [problemId, stopSubmissionPolling]);
+
+  const rawProblemStatus = useMemo(() => {
+    if (!problem) return undefined;
+    const fromProblem = problem.myStatus ?? (problem as any).my_status;
+    if (fromProblem != null && String(fromProblem).trim().length > 0) {
+      const raw = String(fromProblem).trim();
+      const mapped = judgeResultToStatus[raw];
+      if (mapped) {
+        return mapped;
+      }
+      return raw.toUpperCase();
+    }
+    if (problem.solved) {
+      return 'AC';
+    }
+    return undefined;
+  }, [problem]);
+
+  const statusDisplay = useMemo<StatusDisplayMeta | undefined>(() => {
+    if (!problem) return undefined;
+
+    const statusDefinitions: Record<string, { label: string; message?: string; tone: StatusTone }> = {
+      AC: { label: '채점 통과', message: '축하합니다! 이 문제를 해결했습니다.', tone: 'success' },
+      ACCEPTED: { label: '채점 통과', message: '축하합니다! 이 문제를 해결했습니다.', tone: 'success' },
+      WA: { label: '틀렸습니다', message: '정답과 출력이 달랐어요. 입출력 예제를 다시 확인해보세요.', tone: 'error' },
+      WRONG_ANSWER: { label: '틀렸습니다', message: '정답과 출력이 달랐어요. 입출력 예제를 다시 확인해보세요.', tone: 'error' },
+      TLE: { label: '시간 초과', message: '실행 시간이 제한을 넘었습니다. 알고리즘을 최적화해보세요.', tone: 'warning' },
+      TIME_LIMIT_EXCEEDED: { label: '시간 초과', message: '실행 시간이 제한을 넘었습니다. 알고리즘을 최적화해보세요.', tone: 'warning' },
+      MLE: { label: '메모리 초과', message: '필요한 메모리가 제한을 초과했습니다. 자료구조를 재검토해보세요.', tone: 'warning' },
+      MEMORY_LIMIT_EXCEEDED: { label: '메모리 초과', message: '필요한 메모리가 제한을 초과했습니다. 자료구조를 재검토해보세요.', tone: 'warning' },
+      OLE: { label: '출력 초과', message: '출력 크기가 제한을 초과했습니다.', tone: 'warning' },
+      OUTPUT_LIMIT_EXCEEDED: { label: '출력 초과', message: '출력 크기가 제한을 초과했습니다.', tone: 'warning' },
+      RE: { label: '런타임 에러', message: '실행 중 예외가 발생했습니다. 예외 상황을 확인해보세요.', tone: 'error' },
+      RUNTIME_ERROR: { label: '런타임 에러', message: '실행 중 예외가 발생했습니다. 예외 상황을 확인해보세요.', tone: 'error' },
+      CE: { label: '컴파일 에러', message: '컴파일이 실패했습니다. 컴파일러 메시지를 확인하세요.', tone: 'error' },
+      COMPILE_ERROR: { label: '컴파일 에러', message: '컴파일이 실패했습니다. 컴파일러 메시지를 확인하세요.', tone: 'error' },
+      SE: { label: '시스템 오류', message: '채점 서버에 문제가 발생했습니다. 잠시 후 다시 시도해 주세요.', tone: 'error' },
+      SYSTEM_ERROR: { label: '시스템 오류', message: '채점 서버에 문제가 발생했습니다. 잠시 후 다시 시도해 주세요.', tone: 'error' },
+      PAC: { label: '부분 정답', message: '일부 테스트만 통과했습니다. 나머지도 해결해 보세요.', tone: 'warning' },
+      PARTIAL_ACCEPTED: { label: '부분 정답', message: '일부 테스트만 통과했습니다. 나머지도 해결해 보세요.', tone: 'warning' },
+      PE: { label: '출력 형식 오류', message: '형식 차이로 오답 처리되었습니다. 공백과 줄바꿈을 확인해보세요.', tone: 'warning' },
+      PRESENTATION_ERROR: { label: '출력 형식 오류', message: '형식 차이로 오답 처리되었습니다. 공백과 줄바꿈을 확인해보세요.', tone: 'warning' },
+      PENDING: { label: '채점 대기 중', message: '채점 서버가 제출을 처리하는 중입니다.', tone: 'info' },
+      JUDGING: { label: '채점 중', message: '곧 결과가 업데이트됩니다.', tone: 'info' },
+      RUNNING: { label: '실행 중', message: '채점 서버에서 프로그램이 실행되고 있습니다.', tone: 'info' },
+      SUBMITTED: { label: '제출 완료', message: '곧 채점이 시작됩니다.', tone: 'info' },
+      SUBMITTING: { label: '제출 중', message: '제출한 코드를 채점 서버에 전달하고 있습니다.', tone: 'info' },
+    };
+
+    const statusCode = manualStatus ?? rawProblemStatus;
+
+    if (!statusCode) {
+      return {
+        label: '제출 기록이 없습니다',
+        message: '코드를 제출하면 채점 결과가 여기에 표시됩니다.',
+        tone: 'info' as const,
+      };
+    }
+
+    const normalized = String(statusCode).trim().toUpperCase();
+    const normalizedKey = normalized.replace(/\s+/g, '_');
+    const definition = statusDefinitions[normalized] ?? statusDefinitions[normalizedKey];
+    if (definition) {
+      return { ...definition, code: normalized };
+    }
+
+    return {
+      label: normalized,
+      message: '최근 제출 상태를 확인했습니다.',
+      tone: normalized === 'AC' ? 'success' : 'info',
+      code: normalized,
+    };
+  }, [manualStatus, rawProblemStatus, problem]);
+
+  const statusToneStyle = statusDisplay ? toneStyles[statusDisplay.tone] : undefined;
+
+  useEffect(() => {
+    if (!manualStatus) return;
+    if ((rawProblemStatus && rawProblemStatus !== manualStatus) || problem?.solved) {
+      setManualStatus(undefined);
+    }
+  }, [manualStatus, rawProblemStatus, problem?.solved]);
+
+  useEffect(() => () => {
+    stopSubmissionPolling();
+  }, [stopSubmissionPolling]);
 
   if (isLoading) {
     return (
@@ -192,6 +497,31 @@ export const ProblemDetailPage: React.FC = () => {
                 </h1>
                 <span className="text-xs text-gray-600">시간 {problem.timeLimit}ms · 메모리 {problem.memoryLimit}MB</span>
               </div>
+
+              {statusDisplay && statusToneStyle && (
+                <div className={`flex items-start gap-3 rounded-lg border px-4 py-3 ${statusToneStyle.container}`}>
+                  <div className={`mt-1 ${statusToneStyle.iconColor}`}>
+                    {statusToneStyle.icon}
+                  </div>
+                  <div className="flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className={`text-sm font-semibold ${statusToneStyle.label}`}>
+                        {statusDisplay.label}
+                      </p>
+                      {statusDisplay.code && (
+                        <span className={`rounded border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${statusToneStyle.badge}`}>
+                          {statusDisplay.code}
+                        </span>
+                      )}
+                    </div>
+                    {statusDisplay.message && (
+                      <p className={`mt-1 text-xs leading-5 ${statusToneStyle.message}`}>
+                        {statusDisplay.message}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
 
               <section>
                 <h2 className="text-lg font-semibold mb-3">문제 설명</h2>

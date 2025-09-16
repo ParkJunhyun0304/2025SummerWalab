@@ -14,10 +14,28 @@ const apiClient: AxiosInstance = axios.create({
   withCredentials: true, // 쿠키 자동 포함
 });
 
+const getCsrfToken = () => {
+  if (typeof document === 'undefined') {
+    return undefined;
+  }
+  const match = document.cookie.match(/csrftoken=([^;]+)/);
+  return match ? decodeURIComponent(match[1]) : undefined;
+};
+
 // 요청 인터셉터 (쿠키 자동 포함)
 apiClient.interceptors.request.use(
   (config) => {
     // 쿠키는 자동으로 포함되므로 별도 설정 불필요
+    const csrf = getCsrfToken();
+    if (csrf) {
+      config.headers = config.headers || {};
+      if (!config.headers['X-CSRFToken']) {
+        config.headers['X-CSRFToken'] = csrf;
+      }
+      if (!config.headers['X-CSRF-Token']) {
+        config.headers['X-CSRF-Token'] = csrf;
+      }
+    }
     return config;
   },
   (error) => {
