@@ -53,9 +53,11 @@ const adaptProblem = (p: any): Problem => {
   }
   // Detect micro-service schema (snake_case)
   const isMicro = Object.prototype.hasOwnProperty.call(p, 'time_limit');
+  const rawDisplayId = p?._id ?? p?.display_id ?? p?.displayId ?? p?.id;
   if (isMicro) {
     return {
       id: p.id,
+      displayId: rawDisplayId ? String(rawDisplayId) : undefined,
       title: p.title,
       description: p.description || '',
       difficulty: (p.difficulty as any) || 'Low',
@@ -83,6 +85,7 @@ const adaptProblem = (p: any): Problem => {
   const normalizedSamples = adaptSamples(p.samples ?? (p as any).Samples);
   return {
     ...(p as Problem),
+    displayId: rawDisplayId ? String(rawDisplayId) : (p as Problem).displayId,
     myStatus: rawStatus,
     solved,
     samples: normalizedSamples ?? (p as Problem).samples,

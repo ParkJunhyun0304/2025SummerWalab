@@ -11,6 +11,7 @@ export interface User {
 // 문제 관련 타입
 export interface Problem {
   id: number;
+  displayId?: string;
   title: string;
   description: string;
   difficulty: 'Low' | 'Mid' | 'High';

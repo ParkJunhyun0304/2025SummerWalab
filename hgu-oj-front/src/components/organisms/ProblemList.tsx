@@ -132,7 +132,7 @@ export const ProblemList: React.FC<ProblemListProps> = ({
               >
                 <div className="grid grid-cols-12 gap-4 items-center">
                   <div className="col-span-1 text-sm font-medium text-gray-900 text-center">
-                    {problem.id}
+                    {problem.displayId ?? problem.id}
                   </div>
                   <div className="col-span-6">
                     <div className="flex items-center gap-2">

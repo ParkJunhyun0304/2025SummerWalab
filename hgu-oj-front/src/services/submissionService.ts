@@ -23,6 +23,21 @@ export interface SubmissionDetail {
   [key: string]: unknown;
 }
 
+export interface SubmissionListItem extends SubmissionDetail {
+  language?: string;
+  create_time?: string;
+  createTime?: string;
+  execution_time?: number;
+  executionTime?: number;
+  memory?: number;
+  memoryUsage?: number;
+}
+
+export interface SubmissionListResponse {
+  items: SubmissionListItem[];
+  total: number;
+}
+
 // Map editor language value to judge language identifier
 const languageMap: Record<string, string> = {
   javascript: 'JavaScript',
@@ -101,6 +116,45 @@ export const submissionService = {
       throw new Error(message);
     }
     return response.data;
+  },
+  getMySubmissions: async (problemId: number | string, options?: { limit?: number; offset?: number; page?: number }): Promise<SubmissionListResponse> => {
+    const limit = options?.limit ?? 20;
+    const offset = options?.offset ?? 0;
+    const page = options?.page ?? Math.floor(offset / Math.max(limit, 1)) + 1;
+
+    const params: Record<string, unknown> = {
+      problem_id: String(problemId),
+      limit,
+      offset,
+      page,
+      myself: '1',
+    };
+
+    const response = await api.get<any>('/submissions', params);
+    if (!response.success) {
+      const message = response.message || '제출 목록을 불러오지 못했습니다.';
+      throw new Error(message);
+    }
+
+    const body = response.data;
+    let items: SubmissionListItem[] = [];
+    let total = 0;
+
+    if (Array.isArray(body)) {
+      items = body as SubmissionListItem[];
+      total = body.length;
+    } else if (body && Array.isArray(body.results)) {
+      items = body.results as SubmissionListItem[];
+      total = Number(body.total ?? body.count ?? body.results.length);
+    } else if (body && Array.isArray(body.data)) {
+      items = body.data as SubmissionListItem[];
+      total = Number(body.total ?? body.count ?? body.data.length);
+    }
+
+    return {
+      items,
+      total,
+    };
   },
 };
 

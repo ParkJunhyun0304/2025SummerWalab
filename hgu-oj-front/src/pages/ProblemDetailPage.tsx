@@ -1,12 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useProblem } from '../hooks/useProblems';
 import { CodeEditor } from '../components/organisms/CodeEditor';
 import { Button } from '../components/atoms/Button';
 import { ExecutionResult } from '../types';
 import { executionService } from '../services/executionService';
-import { submissionService } from '../services/submissionService';
+import { submissionService, SubmissionListItem } from '../services/submissionService';
 
 type StatusTone = 'success' | 'error' | 'warning' | 'info';
 
@@ -124,6 +124,46 @@ const toneStyles: Record<StatusTone, StatusToneStyle> = {
   },
 };
 
+const STATUS_META: Record<string, Omit<StatusDisplayMeta, 'code'>> = {
+  AC: { label: '채점 통과', message: '축하합니다! 이 문제를 해결했습니다.', tone: 'success' },
+  ACCEPTED: { label: '채점 통과', message: '축하합니다! 이 문제를 해결했습니다.', tone: 'success' },
+  WA: { label: '틀렸습니다', message: '정답과 출력이 달랐어요. 입출력 예제를 다시 확인해보세요.', tone: 'error' },
+  WRONG_ANSWER: { label: '틀렸습니다', message: '정답과 출력이 달랐어요. 입출력 예제를 다시 확인해보세요.', tone: 'error' },
+  TLE: { label: '시간 초과', message: '실행 시간이 제한을 넘었습니다. 알고리즘을 최적화해보세요.', tone: 'warning' },
+  TIME_LIMIT_EXCEEDED: { label: '시간 초과', message: '실행 시간이 제한을 넘었습니다. 알고리즘을 최적화해보세요.', tone: 'warning' },
+  MLE: { label: '메모리 초과', message: '필요한 메모리가 제한을 초과했습니다. 자료구조를 재검토해보세요.', tone: 'warning' },
+  MEMORY_LIMIT_EXCEEDED: { label: '메모리 초과', message: '필요한 메모리가 제한을 초과했습니다. 자료구조를 재검토해보세요.', tone: 'warning' },
+  OLE: { label: '출력 초과', message: '출력 크기가 제한을 초과했습니다.', tone: 'warning' },
+  OUTPUT_LIMIT_EXCEEDED: { label: '출력 초과', message: '출력 크기가 제한을 초과했습니다.', tone: 'warning' },
+  RE: { label: '런타임 에러', message: '실행 중 예외가 발생했습니다. 예외 상황을 확인해보세요.', tone: 'error' },
+  RUNTIME_ERROR: { label: '런타임 에러', message: '실행 중 예외가 발생했습니다. 예외 상황을 확인해보세요.', tone: 'error' },
+  CE: { label: '컴파일 에러', message: '컴파일이 실패했습니다. 컴파일러 메시지를 확인하세요.', tone: 'error' },
+  COMPILE_ERROR: { label: '컴파일 에러', message: '컴파일이 실패했습니다. 컴파일러 메시지를 확인하세요.', tone: 'error' },
+  SE: { label: '시스템 오류', message: '채점 서버에 문제가 발생했습니다. 잠시 후 다시 시도해 주세요.', tone: 'error' },
+  SYSTEM_ERROR: { label: '시스템 오류', message: '채점 서버에 문제가 발생했습니다. 잠시 후 다시 시도해 주세요.', tone: 'error' },
+  PAC: { label: '부분 정답', message: '일부 테스트만 통과했습니다. 나머지도 해결해 보세요.', tone: 'warning' },
+  PARTIAL_ACCEPTED: { label: '부분 정답', message: '일부 테스트만 통과했습니다. 나머지도 해결해 보세요.', tone: 'warning' },
+  PE: { label: '출력 형식 오류', message: '형식 차이로 오답 처리되었습니다. 공백과 줄바꿈을 확인해보세요.', tone: 'warning' },
+  PRESENTATION_ERROR: { label: '출력 형식 오류', message: '형식 차이로 오답 처리되었습니다. 공백과 줄바꿈을 확인해보세요.', tone: 'warning' },
+  PENDING: { label: '채점 대기 중', message: '채점 서버가 제출을 처리하는 중입니다.', tone: 'info' },
+  JUDGING: { label: '채점 중', message: '곧 결과가 업데이트됩니다.', tone: 'info' },
+  RUNNING: { label: '실행 중', message: '채점 서버에서 프로그램이 실행되고 있습니다.', tone: 'info' },
+  SUBMITTED: { label: '제출 완료', message: '곧 채점이 시작됩니다.', tone: 'info' },
+  SUBMITTING: { label: '제출 중', message: '제출한 코드를 채점 서버에 전달하고 있습니다.', tone: 'info' },
+};
+
+const describeStatus = (statusCode?: string): StatusDisplayMeta | undefined => {
+  if (!statusCode) return undefined;
+  const normalized = statusCode.trim().toUpperCase();
+  if (!normalized) return undefined;
+  const normalizedKey = normalized.replace(/\s+/g, '_');
+  const meta = STATUS_META[normalized] ?? STATUS_META[normalizedKey];
+  if (meta) {
+    return { ...meta, code: normalized };
+  }
+  return undefined;
+};
+
 const judgeResultToStatus: Record<string, string> = {
   '-2': 'CE',
   '-1': 'WA',
@@ -153,6 +193,7 @@ export const ProblemDetailPage: React.FC = () => {
   const [isExecuting, setIsExecuting] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [manualStatus, setManualStatus] = useState<string | undefined>();
+  const [activeSection, setActiveSection] = useState<'description' | 'submissions'>('description');
   const [editorTheme, setEditorTheme] = useState<'light' | 'dark'>(() => {
     const saved = localStorage.getItem('oj:editorTheme');
     return saved === 'light' || saved === 'dark' ? saved : 'dark';
@@ -277,6 +318,20 @@ export const ProblemDetailPage: React.FC = () => {
     submissionPollTimerRef.current = setTimeout(poll, 1000);
   }, [mapJudgeResult, problemId, queryClient, stopSubmissionPolling]);
 
+  const submissionProblemKey = useMemo(() => {
+    if (!problem) return undefined;
+    if (problem.displayId && problem.displayId.trim().length > 0) {
+      return problem.displayId.trim();
+    }
+    if (Number.isFinite(problem.id)) {
+      return String(problem.id);
+    }
+    if (Number.isFinite(problemId) && problemId > 0) {
+      return String(problemId);
+    }
+    return undefined;
+  }, [problem, problemId]);
+
   const handleExecute = async (code: string, language: string, input?: string) => {
     setIsExecuting(true);
     try {
@@ -341,9 +396,13 @@ export const ProblemDetailPage: React.FC = () => {
       const successMessage = hasSubmissionId
         ? `제출이 완료되었습니다! (제출 번호: ${submissionIdRaw})`
         : '제출이 완료되었습니다!';
+      setActiveSection('submissions');
       if (hasSubmissionId && submissionIdRaw != null) {
         setManualStatus('SUBMITTING');
         startSubmissionPolling(submissionIdRaw);
+        if (submissionProblemKey) {
+          queryClient.invalidateQueries({ queryKey: ['my-submissions', submissionProblemKey] });
+        }
       } else {
         setManualStatus('SUBMITTED');
       }
@@ -379,63 +438,6 @@ export const ProblemDetailPage: React.FC = () => {
     return undefined;
   }, [problem]);
 
-  const statusDisplay = useMemo<StatusDisplayMeta | undefined>(() => {
-    if (!problem) return undefined;
-
-    const statusDefinitions: Record<string, { label: string; message?: string; tone: StatusTone }> = {
-      AC: { label: '채점 통과', message: '축하합니다! 이 문제를 해결했습니다.', tone: 'success' },
-      ACCEPTED: { label: '채점 통과', message: '축하합니다! 이 문제를 해결했습니다.', tone: 'success' },
-      WA: { label: '틀렸습니다', message: '정답과 출력이 달랐어요. 입출력 예제를 다시 확인해보세요.', tone: 'error' },
-      WRONG_ANSWER: { label: '틀렸습니다', message: '정답과 출력이 달랐어요. 입출력 예제를 다시 확인해보세요.', tone: 'error' },
-      TLE: { label: '시간 초과', message: '실행 시간이 제한을 넘었습니다. 알고리즘을 최적화해보세요.', tone: 'warning' },
-      TIME_LIMIT_EXCEEDED: { label: '시간 초과', message: '실행 시간이 제한을 넘었습니다. 알고리즘을 최적화해보세요.', tone: 'warning' },
-      MLE: { label: '메모리 초과', message: '필요한 메모리가 제한을 초과했습니다. 자료구조를 재검토해보세요.', tone: 'warning' },
-      MEMORY_LIMIT_EXCEEDED: { label: '메모리 초과', message: '필요한 메모리가 제한을 초과했습니다. 자료구조를 재검토해보세요.', tone: 'warning' },
-      OLE: { label: '출력 초과', message: '출력 크기가 제한을 초과했습니다.', tone: 'warning' },
-      OUTPUT_LIMIT_EXCEEDED: { label: '출력 초과', message: '출력 크기가 제한을 초과했습니다.', tone: 'warning' },
-      RE: { label: '런타임 에러', message: '실행 중 예외가 발생했습니다. 예외 상황을 확인해보세요.', tone: 'error' },
-      RUNTIME_ERROR: { label: '런타임 에러', message: '실행 중 예외가 발생했습니다. 예외 상황을 확인해보세요.', tone: 'error' },
-      CE: { label: '컴파일 에러', message: '컴파일이 실패했습니다. 컴파일러 메시지를 확인하세요.', tone: 'error' },
-      COMPILE_ERROR: { label: '컴파일 에러', message: '컴파일이 실패했습니다. 컴파일러 메시지를 확인하세요.', tone: 'error' },
-      SE: { label: '시스템 오류', message: '채점 서버에 문제가 발생했습니다. 잠시 후 다시 시도해 주세요.', tone: 'error' },
-      SYSTEM_ERROR: { label: '시스템 오류', message: '채점 서버에 문제가 발생했습니다. 잠시 후 다시 시도해 주세요.', tone: 'error' },
-      PAC: { label: '부분 정답', message: '일부 테스트만 통과했습니다. 나머지도 해결해 보세요.', tone: 'warning' },
-      PARTIAL_ACCEPTED: { label: '부분 정답', message: '일부 테스트만 통과했습니다. 나머지도 해결해 보세요.', tone: 'warning' },
-      PE: { label: '출력 형식 오류', message: '형식 차이로 오답 처리되었습니다. 공백과 줄바꿈을 확인해보세요.', tone: 'warning' },
-      PRESENTATION_ERROR: { label: '출력 형식 오류', message: '형식 차이로 오답 처리되었습니다. 공백과 줄바꿈을 확인해보세요.', tone: 'warning' },
-      PENDING: { label: '채점 대기 중', message: '채점 서버가 제출을 처리하는 중입니다.', tone: 'info' },
-      JUDGING: { label: '채점 중', message: '곧 결과가 업데이트됩니다.', tone: 'info' },
-      RUNNING: { label: '실행 중', message: '채점 서버에서 프로그램이 실행되고 있습니다.', tone: 'info' },
-      SUBMITTED: { label: '제출 완료', message: '곧 채점이 시작됩니다.', tone: 'info' },
-      SUBMITTING: { label: '제출 중', message: '제출한 코드를 채점 서버에 전달하고 있습니다.', tone: 'info' },
-    };
-
-    const statusCode = manualStatus ?? rawProblemStatus;
-
-    if (!statusCode) {
-      return {
-        label: '제출 기록이 없습니다',
-        message: '코드를 제출하면 채점 결과가 여기에 표시됩니다.',
-        tone: 'info' as const,
-      };
-    }
-
-    const normalized = String(statusCode).trim().toUpperCase();
-    const normalizedKey = normalized.replace(/\s+/g, '_');
-    const definition = statusDefinitions[normalized] ?? statusDefinitions[normalizedKey];
-    if (definition) {
-      return { ...definition, code: normalized };
-    }
-
-    return {
-      label: normalized,
-      message: '최근 제출 상태를 확인했습니다.',
-      tone: normalized === 'AC' ? 'success' : 'info',
-      code: normalized,
-    };
-  }, [manualStatus, rawProblemStatus, problem]);
-
-  const statusToneStyle = statusDisplay ? toneStyles[statusDisplay.tone] : undefined;
   const isDarkTheme = editorTheme === 'dark';
 
   const contentPanelClasses = isDarkTheme
@@ -452,10 +454,79 @@ export const ProblemDetailPage: React.FC = () => {
   const sampleCopyButtonClass = isDarkTheme
     ? 'px-2 py-1 text-xs text-slate-200 border-slate-500 hover:bg-slate-800'
     : 'px-2 py-1 text-xs';
-  const editorHeaderClasses = isDarkTheme
-    ? 'bg-slate-800 border-slate-700 text-slate-200'
-    : 'bg-gray-50 border-gray-200 text-gray-700';
   const copyFeedbackClass = isDarkTheme ? 'text-emerald-400' : 'text-green-600';
+  const tabBaseClass = 'px-3 py-1.5 text-sm font-medium rounded-md transition-colors';
+  const tabActiveClass = isDarkTheme
+    ? 'bg-slate-700 text-slate-100 border border-slate-500 shadow'
+    : 'bg-white text-gray-900 border border-gray-300 shadow-sm';
+  const tabInactiveClass = isDarkTheme
+    ? 'text-slate-300 border border-transparent hover:bg-slate-800'
+    : 'text-gray-600 border border-transparent hover:bg-gray-100';
+  const sectionOptions: Array<{ id: 'description' | 'submissions'; label: string }> = [
+    { id: 'description', label: '문제 내용' },
+    { id: 'submissions', label: '내 제출' },
+  ];
+
+  const { data: mySubmissionsResponse, isLoading: isLoadingSubmissions } = useQuery({
+    queryKey: ['my-submissions', submissionProblemKey],
+    queryFn: () => submissionService.getMySubmissions(submissionProblemKey!),
+    enabled: activeSection === 'submissions' && !!submissionProblemKey,
+    staleTime: 30_000,
+  });
+
+  const mySubmissions = mySubmissionsResponse?.items ?? [];
+
+  const getNumericValue = (value: unknown): number | undefined => {
+    if (typeof value === 'number' && Number.isFinite(value)) return value;
+    if (typeof value === 'string') {
+      const num = Number(value);
+      if (Number.isFinite(num)) return num;
+    }
+    return undefined;
+  };
+
+  const getSubmissionTimestamp = (submission: SubmissionListItem): string | undefined => {
+    const candidate = submission.create_time
+      ?? submission.createTime
+      ?? (submission as any).created_at
+      ?? (submission as any).createdAt
+      ?? (submission as any).submit_time
+      ?? (submission as any).submission_time;
+    return typeof candidate === 'string' ? candidate : undefined;
+  };
+
+  const formatDateTime = (value?: string) => {
+    if (!value) return '-';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return value;
+    return new Intl.DateTimeFormat('ko-KR', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    }).format(date);
+  };
+
+  const getSubmissionExecutionTime = (submission: SubmissionListItem): number | undefined => {
+    const candidate = submission.executionTime
+      ?? submission.execution_time
+      ?? (submission as any).time
+      ?? (submission as any).cpu_time
+      ?? (submission.statistic_info as any)?.time_cost
+      ?? (submission.statistic_info as any)?.cpu_time;
+    return getNumericValue(candidate);
+  };
+
+  const getSubmissionMemory = (submission: SubmissionListItem): number | undefined => {
+    const candidate = submission.memoryUsage
+      ?? submission.memory
+      ?? (submission as any).memory_usage
+      ?? (submission as any).memory_cost
+      ?? (submission.statistic_info as any)?.memory_cost;
+    return getNumericValue(candidate);
+  };
 
   useEffect(() => {
     if (!manualStatus) return;
@@ -559,125 +630,182 @@ export const ProblemDetailPage: React.FC = () => {
                     <span className="inline-flex items-center px-2 py-0.5 text-[10px] font-semibold rounded bg-green-100 text-green-700">Solved</span>
                   )}
                 </h1>
-                <span className={`text-xs ${subtleTextClass}`}>
-                  시간 {problem.timeLimit}ms · 메모리 {problem.memoryLimit}MB
-                </span>
+                <div className={`flex flex-wrap items-center gap-3 text-xs ${subtleTextClass}`}>
+                  <span>ID {problem.displayId ?? problem.id}</span>
+                  <span>시간 {problem.timeLimit}ms · 메모리 {problem.memoryLimit}MB</span>
+                </div>
               </div>
 
-              {statusDisplay && statusToneStyle && (
-                <div className={`flex items-start gap-3 rounded-lg border px-4 py-3 ${statusToneStyle.container}`}>
-                  <div className={`mt-1 ${statusToneStyle.iconColor}`}>
-                    {statusToneStyle.icon}
-                  </div>
-                  <div className="flex-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <p className={`text-sm font-semibold ${statusToneStyle.label}`}>
-                        {statusDisplay.label}
-                      </p>
-                      {statusDisplay.code && (
-                        <span className={`rounded border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${statusToneStyle.badge}`}>
-                          {statusDisplay.code}
-                        </span>
-                      )}
+              <div className="flex items-center gap-2">
+                {sectionOptions.map((tab) => (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => setActiveSection(tab.id)}
+                    className={`${tabBaseClass} ${activeSection === tab.id ? tabActiveClass : tabInactiveClass}`}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+
+              {activeSection === 'description' ? (
+                <>
+                  <section>
+                    <h2 className={`text-lg font-semibold mb-3 ${headingTextClass}`}>문제 설명</h2>
+                    <div className={proseClass}>
+                      <div dangerouslySetInnerHTML={{ __html: problem.description }} />
                     </div>
-                    {statusDisplay.message && (
-                      <p className={`mt-1 text-xs leading-5 ${statusToneStyle.message}`}>
-                        {statusDisplay.message}
-                      </p>
-                    )}
-                  </div>
-                </div>
-              )}
+                  </section>
 
-              <section>
-                <h2 className={`text-lg font-semibold mb-3 ${headingTextClass}`}>문제 설명</h2>
-                <div className={proseClass}>
-                  <div dangerouslySetInnerHTML={{ __html: problem.description }} />
-                </div>
-              </section>
-
-              {problem.inputDescription && (
-                <section>
-                  <h2 className={`text-lg font-semibold mb-3 ${headingTextClass}`}>입력 형식</h2>
-                  <div className={proseClass}>
-                    <div dangerouslySetInnerHTML={{ __html: problem.inputDescription }} />
-                  </div>
-                </section>
-              )}
-
-              {problem.outputDescription && (
-                <section>
-                  <h2 className={`text-lg font-semibold mb-3 ${headingTextClass}`}>출력 형식</h2>
-                  <div className={proseClass}>
-                    <div dangerouslySetInnerHTML={{ __html: problem.outputDescription }} />
-                  </div>
-                </section>
-              )}
-
-              {problem.samples && problem.samples.length > 0 && (
-                <section>
-                  <h2 className={`text-lg font-semibold mb-3 ${headingTextClass}`}>입출력 예제</h2>
-                  <div className="space-y-4">
-                    {problem.samples.map((sample, index) => (
-                      <div key={index} className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                          <div className="flex items-center justify-between mb-2">
-                            <h3 className="font-medium">입력 {index + 1}</h3>
-                            <div className="flex items-center gap-2">
-                              {copiedKey === `sample-${index}-input` && (
-                                <span className={`text-[11px] ${copyFeedbackClass}`}>복사됨!</span>
-                              )}
-                              <Button
-                                variant={sampleCopyVariant}
-                                size="sm"
-                                onClick={(e) => {
-                                  e?.stopPropagation?.();
-                                  copyToClipboard(sample.input, `sample-${index}-input`);
-                                }}
-                                className={sampleCopyButtonClass}
-                              >
-                                복사
-                              </Button>
-                            </div>
-                          </div>
-                          <pre className={`${samplePreClasses} p-3 rounded text-sm font-mono whitespace-pre-wrap`}>
-                            {sample.input}
-                          </pre>
-                        </div>
-                        <div>
-                          <div className="flex items-center justify-between mb-2">
-                            <h3 className="font-medium">출력 {index + 1}</h3>
-                            <div className="flex items-center gap-2">
-                              {copiedKey === `sample-${index}-output` && (
-                                <span className={`text-[11px] ${copyFeedbackClass}`}>복사됨!</span>
-                              )}
-                              <Button
-                                variant={sampleCopyVariant}
-                                size="sm"
-                                onClick={(e) => {
-                                  e?.stopPropagation?.();
-                                  copyToClipboard(sample.output, `sample-${index}-output`);
-                                }}
-                                className={sampleCopyButtonClass}
-                              >
-                                복사
-                              </Button>
-                            </div>
-                          </div>
-                          <pre className={`${samplePreClasses} p-3 rounded text-sm font-mono whitespace-pre-wrap`}>
-                            {sample.output}
-                          </pre>
-                        </div>
+                  {problem.inputDescription && (
+                    <section>
+                      <h2 className={`text-lg font-semibold mb-3 ${headingTextClass}`}>입력 형식</h2>
+                      <div className={proseClass}>
+                        <div dangerouslySetInnerHTML={{ __html: problem.inputDescription }} />
                       </div>
-                    ))}
-                  </div>
-                </section>
-              )}
+                    </section>
+                  )}
 
-              {problem.hint && (
-                <section>
-                  <h2 className={`text-lg font-semibold mb-3 ${headingTextClass}`}>힌트</h2>
-                  <p className="whitespace-pre-wrap">{problem.hint}</p>
+                  {problem.outputDescription && (
+                    <section>
+                      <h2 className={`text-lg font-semibold mb-3 ${headingTextClass}`}>출력 형식</h2>
+                      <div className={proseClass}>
+                        <div dangerouslySetInnerHTML={{ __html: problem.outputDescription }} />
+                      </div>
+                    </section>
+                  )}
+
+                  {problem.samples && problem.samples.length > 0 && (
+                    <section>
+                      <h2 className={`text-lg font-semibold mb-3 ${headingTextClass}`}>입출력 예제</h2>
+                      <div className="space-y-4">
+                        {problem.samples.map((sample, index) => (
+                          <div key={index} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                              <div className="flex items-center justify-between mb-2">
+                                <h3 className="font-medium">입력 {index + 1}</h3>
+                                <div className="flex items-center gap-2">
+                                  {copiedKey === `sample-${index}-input` && (
+                                    <span className={`text-[11px] ${copyFeedbackClass}`}>복사됨!</span>
+                                  )}
+                                  <Button
+                                    variant={sampleCopyVariant}
+                                    size="sm"
+                                    onClick={(e) => {
+                                      e?.stopPropagation?.();
+                                      copyToClipboard(sample.input, `sample-${index}-input`);
+                                    }}
+                                    className={sampleCopyButtonClass}
+                                  >
+                                    복사
+                                  </Button>
+                                </div>
+                              </div>
+                              <pre className={`${samplePreClasses} p-3 rounded text-sm font-mono whitespace-pre-wrap`}>
+                                {sample.input}
+                              </pre>
+                            </div>
+                            <div>
+                              <div className="flex items-center justify-between mb-2">
+                                <h3 className="font-medium">출력 {index + 1}</h3>
+                                <div className="flex items-center gap-2">
+                                  {copiedKey === `sample-${index}-output` && (
+                                    <span className={`text-[11px] ${copyFeedbackClass}`}>복사됨!</span>
+                                  )}
+                                  <Button
+                                    variant={sampleCopyVariant}
+                                    size="sm"
+                                    onClick={(e) => {
+                                      e?.stopPropagation?.();
+                                      copyToClipboard(sample.output, `sample-${index}-output`);
+                                    }}
+                                    className={sampleCopyButtonClass}
+                                  >
+                                    복사
+                                  </Button>
+                                </div>
+                              </div>
+                              <pre className={`${samplePreClasses} p-3 rounded text-sm font-mono whitespace-pre-wrap`}>
+                                {sample.output}
+                              </pre>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </section>
+                  )}
+
+                  {problem.hint && (
+                    <section>
+                      <h2 className={`text-lg font-semibold mb-3 ${headingTextClass}`}>힌트</h2>
+                      <p className="whitespace-pre-wrap">{problem.hint}</p>
+                    </section>
+                  )}
+                </>
+              ) : (
+                <section className="space-y-4">
+                  {isLoadingSubmissions ? (
+                    <div className={`py-8 text-center ${subtleTextClass}`}>
+                      내 제출을 불러오는 중입니다...
+                    </div>
+                  ) : mySubmissions.length === 0 ? (
+                    <div className={`py-8 text-center ${subtleTextClass}`}>
+                      아직 제출 기록이 없습니다.
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {mySubmissions.map((submission, index) => {
+                          const rawStatusField = typeof submission.status === 'string' && submission.status.trim().length > 0 ? submission.status : undefined;
+                          const fallbackFromResult = submission.result != null ? judgeResultToStatus[String(submission.result)] ?? String(submission.result) : undefined;
+                          const statusCode = rawStatusField ?? fallbackFromResult;
+                          const statusMeta = describeStatus(statusCode) ?? {
+                            label: statusCode ?? '채점 중',
+                            tone: 'info' as StatusTone,
+                            code: statusCode?.toString().toUpperCase(),
+                          };
+                          const toneStyle = toneStyles[statusMeta.tone];
+                          const submittedAtRaw = getSubmissionTimestamp(submission);
+                          const executionTimeValue = getSubmissionExecutionTime(submission);
+                          const memoryUsageValue = getSubmissionMemory(submission);
+                          return (
+                            <div
+                              key={String(submission.id ?? index)}
+                              className={`rounded-lg border ${isDarkTheme ? 'border-slate-700 bg-slate-900/80 hover:bg-slate-800/70' : 'border-gray-200 bg-white hover:bg-gray-50'} p-4 transition-colors`}
+                            >
+                              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                                <div className="flex-1 min-w-0 space-y-1">
+                                  <div className={`text-xs ${isDarkTheme ? 'text-slate-400' : 'text-gray-500'}`}>
+                                    {formatDateTime(submittedAtRaw)}
+                                  </div>
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <span className={`inline-flex items-center px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide rounded ${toneStyle.badge}`}>
+                                      {statusMeta.code ?? ''}
+                                    </span>
+                                    <span className={`text-sm font-medium ${isDarkTheme ? 'text-slate-100' : 'text-gray-800'}`}>
+                                      {statusMeta.label}
+                                    </span>
+                                    {submission.language && (
+                                      <span className={`text-xs ${isDarkTheme ? 'text-slate-300' : 'text-gray-500'}`}>
+                                        {submission.language}
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                                <div className="flex flex-wrap items-center gap-3 text-sm">
+                                  <span className={`${isDarkTheme ? 'text-slate-200' : 'text-gray-700'}`}>
+                                    {executionTimeValue != null ? `${executionTimeValue}ms` : '-'}
+                                  </span>
+                                  <span className={`${isDarkTheme ? 'text-slate-200' : 'text-gray-700'}`}>
+                                    {memoryUsageValue != null ? `${memoryUsageValue}KB` : '-'}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                    </div>
+                  )}
                 </section>
               )}
             </div>
