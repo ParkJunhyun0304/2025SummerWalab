@@ -34,25 +34,43 @@ VUE_APP_GOOGLE_REDIRECT_URI=http://localhost:3000/oauth/callback
 docker compose up -d --build
 ```
 
-### 커밋 메시지 템플릿
+### Git 규칙
 
-`.gitmessage`는 커밋 제목을 일정한 형식으로 유지하도록 돕는 템플릿입니다. 아래 명령어를 한 번만 실행하면 `git commit` 시 자동으로 템플릿이 적용됩니다.
-```bash
-git config commit.template .gitmessage
-```
+#### 커밋 메시지
 
-#### 예시 (Examples)
+- **형식:** `type: description (#issue)`
+- **타입:** feat, fix, docs, style, refactor, test, chore, build
+- **설명**
+  - feat → 새로운 기능 추가
+  - fix → 버그 수정
+  - docs → 문서 작업
+  - style → 코드 스타일 변경
+  - refactor → 리팩터링
+  - test → 테스트 코드
+  - chore → 빌드/설정/패키지 관리 등
+  - build → 빌드 시스템 및 의존성 관련
+- **예시:**  
+  feat: 로그인 API 추가 (#12)  
+  fix: 메인페이지 CSS 수정 (#15)
 
-커밋 메시지는 일반적으로 다음과 같은 타입을 사용합니다.
-```
-[type]: description (#issue number)
-```
-- **feat**: 새로운 기능 추가 
-- **fix**: 버그 수정 
-- **docs**: 문서 변경
-- **style**: 코드 스타일 변경meaning of the code)
-- **refactor**: 코드 리팩토링 
-- **test**: 테스트 코드 추가 또는 수정 
-- **chore**: 빌드 프로세스 및 기타 변경
+---
 
+#### 브랜치
 
+- **main:** 배포용
+- **dev:** 통합 개발용
+- **working:** 기능/수정 단위 작업용
+- **네이밍 규칙:** `type/issue`
+- **타입:** feat, hotfix, docs, style, refactor, test, chore, build
+- **설명**
+  - feat → 기능 개발
+  - hotfix → 긴급 수정
+  - docs → 문서 작업
+  - style → 코드 스타일 변경
+  - refactor → 리팩터링
+  - test → 테스트 코드
+  - chore → 빌드/설정/패키지 관리 등
+  - build → 빌드 시스템 및 의존성 관련
+- **예시:**  
+  feat/#1  
+  hotfix/#3
