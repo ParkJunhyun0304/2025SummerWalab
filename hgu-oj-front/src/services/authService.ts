@@ -27,9 +27,7 @@ export const authService = {
   loginToMicroService: async (token: string): Promise<void> => {
     await fetch('http://localhost:8000/api/auth/login', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
       body: JSON.stringify({ token }),
     });
