@@ -153,8 +153,14 @@ export const ProblemDetailPage: React.FC = () => {
   const [isExecuting, setIsExecuting] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [manualStatus, setManualStatus] = useState<string | undefined>();
+  const [editorTheme, setEditorTheme] = useState<'light' | 'dark'>(() => {
+    const saved = localStorage.getItem('oj:editorTheme');
+    return saved === 'light' || saved === 'dark' ? saved : 'dark';
+  });
   const submissionPollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const submissionPollAttemptsRef = useRef(0);
+  const copyFeedbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
   // Layout states: left/right resizable and collapsible
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -430,6 +436,26 @@ export const ProblemDetailPage: React.FC = () => {
   }, [manualStatus, rawProblemStatus, problem]);
 
   const statusToneStyle = statusDisplay ? toneStyles[statusDisplay.tone] : undefined;
+  const isDarkTheme = editorTheme === 'dark';
+
+  const contentPanelClasses = isDarkTheme
+    ? 'bg-slate-900 text-slate-100'
+    : 'bg-white text-gray-900';
+
+  const subtleTextClass = isDarkTheme ? 'text-slate-400' : 'text-gray-600';
+  const headingTextClass = isDarkTheme ? 'text-slate-100' : 'text-gray-900';
+  const proseClass = isDarkTheme ? 'prose prose-invert max-w-none' : 'prose max-w-none';
+  const samplePreClasses = isDarkTheme
+    ? 'bg-slate-800 text-slate-100 border border-slate-700'
+    : 'bg-gray-100 text-gray-900';
+  const sampleCopyVariant = isDarkTheme ? 'outline' : 'ghost';
+  const sampleCopyButtonClass = isDarkTheme
+    ? 'px-2 py-1 text-xs text-slate-200 border-slate-500 hover:bg-slate-800'
+    : 'px-2 py-1 text-xs';
+  const editorHeaderClasses = isDarkTheme
+    ? 'bg-slate-800 border-slate-700 text-slate-200'
+    : 'bg-gray-50 border-gray-200 text-gray-700';
+  const copyFeedbackClass = isDarkTheme ? 'text-emerald-400' : 'text-green-600';
 
   useEffect(() => {
     if (!manualStatus) return;
@@ -440,7 +466,40 @@ export const ProblemDetailPage: React.FC = () => {
 
   useEffect(() => () => {
     stopSubmissionPolling();
+    if (copyFeedbackTimeoutRef.current) {
+      clearTimeout(copyFeedbackTimeoutRef.current);
+      copyFeedbackTimeoutRef.current = null;
+    }
   }, [stopSubmissionPolling]);
+
+  const copyToClipboard = useCallback(async (text: string, key: string) => {
+    if (!text) return;
+    try {
+      if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+        await navigator.clipboard.writeText(text);
+      } else {
+        const textarea = document.createElement('textarea');
+        textarea.value = text;
+        textarea.style.position = 'fixed';
+        textarea.style.opacity = '0';
+        document.body.appendChild(textarea);
+        textarea.focus();
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
+      }
+      if (copyFeedbackTimeoutRef.current) {
+        clearTimeout(copyFeedbackTimeoutRef.current);
+      }
+      setCopiedKey(key);
+      copyFeedbackTimeoutRef.current = setTimeout(() => {
+        setCopiedKey(null);
+      }, 2000);
+    } catch (err) {
+      console.error('클립보드 복사 실패', err);
+      alert('복사에 실패했습니다. 다시 시도해주세요.');
+    }
+  }, []);
 
   if (isLoading) {
     return (
@@ -470,32 +529,39 @@ export const ProblemDetailPage: React.FC = () => {
   }
 
   return (
-    <div className="w-full px-0 py-0">
+    <div className={`w-full px-0 py-0 ${isDarkTheme ? 'bg-slate-950 text-slate-100' : 'bg-gray-50 text-gray-900'}`}>
       <div
         ref={containerRef}
         className="relative flex gap-0 h-screen overflow-visible"
       >
         {/* Left: Problem */}
         <div
-          className="flex flex-col bg-white"
+          className={`flex flex-col ${contentPanelClasses}`}
           style={{ width: leftCollapsed ? 0 : `${leftWidthPct}%` }}
         >
           {/* Scrollable problem content - headerless, edge-to-edge */}
           <div className="flex-1 overflow-auto no-scrollbar">
             <div className="px-6 py-4 space-y-6">
               <div className="flex items-center gap-3">
-                <Button variant="ghost" size="sm" onClick={() => navigate(-1)}>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className={isDarkTheme ? 'text-slate-200 hover:bg-slate-800' : ''}
+                  onClick={() => navigate(-1)}
+                >
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                     <polyline points="15 18 9 12 15 6" />
                   </svg>
                 </Button>
-                <h1 className="text-xl font-semibold text-gray-900 flex items-center gap-2">
+                <h1 className={`text-xl font-semibold flex items-center gap-2 ${headingTextClass}`}>
                   {problem.title}
                   {problem.solved && (
                     <span className="inline-flex items-center px-2 py-0.5 text-[10px] font-semibold rounded bg-green-100 text-green-700">Solved</span>
                   )}
                 </h1>
-                <span className="text-xs text-gray-600">시간 {problem.timeLimit}ms · 메모리 {problem.memoryLimit}MB</span>
+                <span className={`text-xs ${subtleTextClass}`}>
+                  시간 {problem.timeLimit}ms · 메모리 {problem.memoryLimit}MB
+                </span>
               </div>
 
               {statusDisplay && statusToneStyle && (
@@ -524,16 +590,16 @@ export const ProblemDetailPage: React.FC = () => {
               )}
 
               <section>
-                <h2 className="text-lg font-semibold mb-3">문제 설명</h2>
-                <div className="prose max-w-none">
+                <h2 className={`text-lg font-semibold mb-3 ${headingTextClass}`}>문제 설명</h2>
+                <div className={proseClass}>
                   <div dangerouslySetInnerHTML={{ __html: problem.description }} />
                 </div>
               </section>
 
               {problem.inputDescription && (
                 <section>
-                  <h2 className="text-lg font-semibold mb-3">입력 형식</h2>
-                  <div className="prose max-w-none">
+                  <h2 className={`text-lg font-semibold mb-3 ${headingTextClass}`}>입력 형식</h2>
+                  <div className={proseClass}>
                     <div dangerouslySetInnerHTML={{ __html: problem.inputDescription }} />
                   </div>
                 </section>
@@ -541,8 +607,8 @@ export const ProblemDetailPage: React.FC = () => {
 
               {problem.outputDescription && (
                 <section>
-                  <h2 className="text-lg font-semibold mb-3">출력 형식</h2>
-                  <div className="prose max-w-none">
+                  <h2 className={`text-lg font-semibold mb-3 ${headingTextClass}`}>출력 형식</h2>
+                  <div className={proseClass}>
                     <div dangerouslySetInnerHTML={{ __html: problem.outputDescription }} />
                   </div>
                 </section>
@@ -550,19 +616,55 @@ export const ProblemDetailPage: React.FC = () => {
 
               {problem.samples && problem.samples.length > 0 && (
                 <section>
-                  <h2 className="text-lg font-semibold mb-3">입출력 예제</h2>
+                  <h2 className={`text-lg font-semibold mb-3 ${headingTextClass}`}>입출력 예제</h2>
                   <div className="space-y-4">
                     {problem.samples.map((sample, index) => (
                       <div key={index} className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
-                          <h3 className="font-medium mb-2">입력 {index + 1}</h3>
-                          <pre className="bg-gray-100 p-3 rounded text-sm font-mono whitespace-pre-wrap">
+                          <div className="flex items-center justify-between mb-2">
+                            <h3 className="font-medium">입력 {index + 1}</h3>
+                            <div className="flex items-center gap-2">
+                              {copiedKey === `sample-${index}-input` && (
+                                <span className={`text-[11px] ${copyFeedbackClass}`}>복사됨!</span>
+                              )}
+                              <Button
+                                variant={sampleCopyVariant}
+                                size="sm"
+                                onClick={(e) => {
+                                  e?.stopPropagation?.();
+                                  copyToClipboard(sample.input, `sample-${index}-input`);
+                                }}
+                                className={sampleCopyButtonClass}
+                              >
+                                복사
+                              </Button>
+                            </div>
+                          </div>
+                          <pre className={`${samplePreClasses} p-3 rounded text-sm font-mono whitespace-pre-wrap`}>
                             {sample.input}
                           </pre>
                         </div>
                         <div>
-                          <h3 className="font-medium mb-2">출력 {index + 1}</h3>
-                          <pre className="bg-gray-100 p-3 rounded text-sm font-mono whitespace-pre-wrap">
+                          <div className="flex items-center justify-between mb-2">
+                            <h3 className="font-medium">출력 {index + 1}</h3>
+                            <div className="flex items-center gap-2">
+                              {copiedKey === `sample-${index}-output` && (
+                                <span className={`text-[11px] ${copyFeedbackClass}`}>복사됨!</span>
+                              )}
+                              <Button
+                                variant={sampleCopyVariant}
+                                size="sm"
+                                onClick={(e) => {
+                                  e?.stopPropagation?.();
+                                  copyToClipboard(sample.output, `sample-${index}-output`);
+                                }}
+                                className={sampleCopyButtonClass}
+                              >
+                                복사
+                              </Button>
+                            </div>
+                          </div>
+                          <pre className={`${samplePreClasses} p-3 rounded text-sm font-mono whitespace-pre-wrap`}>
                             {sample.output}
                           </pre>
                         </div>
@@ -574,7 +676,7 @@ export const ProblemDetailPage: React.FC = () => {
 
               {problem.hint && (
                 <section>
-                  <h2 className="text-lg font-semibold mb-3">힌트</h2>
+                  <h2 className={`text-lg font-semibold mb-3 ${headingTextClass}`}>힌트</h2>
                   <p className="whitespace-pre-wrap">{problem.hint}</p>
                 </section>
               )}
@@ -609,9 +711,9 @@ export const ProblemDetailPage: React.FC = () => {
         </div>
 
         {/* Right: Editor + I/O split */}
-        <div className="flex-1 min-w-0 flex flex-col">
-          <div className="flex items-center px-4 py-2 border-b bg-gray-50">
-            <div className="text-sm text-gray-700">코드 편집</div>
+        <div className={`flex-1 min-w-0 flex flex-col ${isDarkTheme ? 'bg-slate-900 text-slate-100' : 'bg-white text-gray-900'}`}>
+          <div className={`flex items-center px-4 py-2 border-b ${editorHeaderClasses}`}>
+            <div className={`text-sm ${isDarkTheme ? 'text-slate-200' : 'text-gray-700'}`}>코드 편집</div>
           </div>
           <CodeEditor
             problemId={problemId}
@@ -621,6 +723,8 @@ export const ProblemDetailPage: React.FC = () => {
             executionResult={executionResult}
             isExecuting={isExecuting}
             isSubmitting={isSubmitting}
+            preferredTheme={editorTheme}
+            onThemeChange={setEditorTheme}
             className="flex-1"
           />
         </div>

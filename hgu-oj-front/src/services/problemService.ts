@@ -15,6 +15,29 @@ const isAcceptedStatus = (status: any): boolean => {
   return upper === 'AC' || upper === 'ACCEPTED' || upper === '0';
 };
 
+const adaptSamples = (samples: any): Array<{ input: string; output: string }> | undefined => {
+  if (!Array.isArray(samples)) return undefined;
+  const adapted = samples
+    .map((sample: any) => {
+      const input = typeof sample?.input === 'string'
+        ? sample.input
+        : typeof sample?.sample_input === 'string'
+          ? sample.sample_input
+          : '';
+      const output = typeof sample?.output === 'string'
+        ? sample.output
+        : typeof sample?.sample_output === 'string'
+          ? sample.sample_output
+          : '';
+      if (!input && !output) {
+        return undefined;
+      }
+      return { input, output };
+    })
+    .filter((entry): entry is { input: string; output: string } => !!entry);
+  return adapted.length > 0 ? adapted : undefined;
+};
+
 // 적응형 매퍼: 마이크로서비스 또는 OJ 백엔드 형태 모두 지원
 const adaptProblem = (p: any): Problem => {
   if (!p) {
@@ -43,7 +66,7 @@ const adaptProblem = (p: any): Problem => {
       acceptedNumber: p.accepted_number,
       inputDescription: p.input_description || undefined,
       outputDescription: p.output_description || undefined,
-      samples: undefined,
+      samples: adaptSamples(p.samples),
       hint: p.hint || undefined,
       createTime: p.create_time,
       lastUpdateTime: p.last_update_time,
@@ -57,7 +80,13 @@ const adaptProblem = (p: any): Problem => {
   // Assume already in frontend camelCase schema
   const rawStatus = normalizeStatusValue(p.my_status ?? p.myStatus ?? (p as any).myStatus);
   const solved = rawStatus !== undefined ? isAcceptedStatus(rawStatus) : p.solved;
-  return { ...(p as Problem), myStatus: rawStatus, solved } as Problem;
+  const normalizedSamples = adaptSamples(p.samples ?? (p as any).Samples);
+  return {
+    ...(p as Problem),
+    myStatus: rawStatus,
+    solved,
+    samples: normalizedSamples ?? (p as Problem).samples,
+  } as Problem;
 };
 
 export const problemService = {

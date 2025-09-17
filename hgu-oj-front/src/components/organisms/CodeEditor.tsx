@@ -17,6 +17,8 @@ interface CodeEditorProps {
   executionResult?: ExecutionResult;
   isExecuting?: boolean;
   isSubmitting?: boolean;
+  preferredTheme?: 'light' | 'dark';
+  onThemeChange?: (theme: 'light' | 'dark') => void;
   className?: string;
 }
 
@@ -42,6 +44,8 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
   executionResult,
   isExecuting = false,
   isSubmitting = false,
+  preferredTheme,
+  onThemeChange,
   className = '',
 }) => {
   // Storage keys
@@ -61,7 +65,11 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
   });
 
   const [input, setInput] = useState('');
-  const [editorTheme, setEditorTheme] = useState<'light' | 'dark'>(() => (localStorage.getItem(themeKey) as 'light' | 'dark') || 'dark');
+  const [editorTheme, setEditorTheme] = useState<'light' | 'dark'>(() => {
+    if (preferredTheme) return preferredTheme;
+    const saved = localStorage.getItem(themeKey);
+    return saved === 'light' || saved === 'dark' ? saved : 'dark';
+  });
 
   // Layout: vertical split top (editor) / bottom (IO)
   const [ioHeightPct, setIoHeightPct] = useState<number>(() => {
@@ -200,15 +208,49 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
     localStorage.setItem(themeKey, editorTheme);
   }, [editorTheme]);
 
+  useEffect(() => {
+    if (preferredTheme && preferredTheme !== editorTheme) {
+      setEditorTheme(preferredTheme);
+    }
+  }, [preferredTheme]);
+
+  useEffect(() => {
+    onThemeChange?.(editorTheme);
+  }, [editorTheme, onThemeChange]);
+
+  const isDarkTheme = editorTheme === 'dark';
+
+  const toolbarThemeClasses = isDarkTheme
+    ? 'bg-slate-800 border-slate-700 text-slate-200'
+    : 'bg-gray-50 border-gray-200 text-gray-700';
+
+  const controlSelectClasses = (size: 'default' | 'sm' = 'default') => {
+    const base = size === 'sm' ? 'px-2 py-1 text-xs' : 'px-3 py-1.5 text-sm';
+    const theme = isDarkTheme
+      ? 'border border-slate-600 bg-slate-900 text-slate-100 focus:ring-slate-400 focus:border-slate-400'
+      : 'border border-gray-300 bg-white text-gray-800 focus:ring-[#58A0C8] focus:border-[#58A0C8]';
+    return `${base} rounded-md focus:outline-none ${theme}`;
+  };
+
+  const ioPanelClasses = isDarkTheme
+    ? 'bg-slate-900 border-t border-slate-700'
+    : 'bg-gray-50 border-t border-gray-200';
+
+  const ioLabelClasses = isDarkTheme ? 'text-slate-200' : 'text-gray-700';
+
+  const ioTextareaClasses = isDarkTheme
+    ? 'bg-slate-900 border border-slate-600 text-slate-100'
+    : 'bg-white border border-gray-300 text-gray-900';
+
   return (
     <div ref={containerRef} className={`relative flex flex-col h-full min-h-0 ${className}`}>
       {/* Toolbar */}
-      <div className="flex items-center justify-between p-2 bg-gray-50 border-b">
+      <div className={`flex items-center justify-between p-2 border-b ${toolbarThemeClasses}`}>
         <div className="flex items-center gap-2">
           <select
             value={language}
             onChange={(e) => handleLanguageChange(e.target.value)}
-            className="px-3 py-1.5 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#58A0C8] text-sm"
+            className={controlSelectClasses()}
           >
             {languageOptions.map((option) => (
               <option key={option.value} value={option.value}>
@@ -217,17 +259,22 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
             ))}
           </select>
           <div className="flex items-center gap-1 text-sm">
-            <label className="text-gray-600">테마</label>
+            <label className={isDarkTheme ? 'text-slate-300' : 'text-gray-600'}>테마</label>
             <select
               value={editorTheme}
               onChange={(e) => setEditorTheme(e.target.value as 'light' | 'dark')}
-              className="px-2 py-1 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#58A0C8] text-sm"
+              className={controlSelectClasses('sm')}
             >
               <option value="light">Light</option>
               <option value="dark">Dark</option>
             </select>
           </div>
-          <div id="oj-save-indicator" className="text-xs text-green-600 opacity-0 transition-opacity">Saved</div>
+          <div
+            id="oj-save-indicator"
+            className={`text-xs opacity-0 transition-opacity ${isDarkTheme ? 'text-emerald-400' : 'text-green-600'}`}
+          >
+            Saved
+          </div>
         </div>
         <div className="flex gap-2">
           <Button
@@ -310,16 +357,16 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
 
         {/* IO Panel */}
         {!ioCollapsed && (
-          <div style={{ height: `${ioHeightPct}%` }} className="min-h-[140px] border-t bg-gray-50 flex flex-col">
+          <div style={{ height: `${ioHeightPct}%` }} className={`min-h-[140px] flex flex-col ${ioPanelClasses}`}>
             <div id="oj-io-pane" className="flex-1 overflow-hidden p-3 flex items-stretch gap-3">
               {/* 입력 패널 */}
               <div style={{ width: `${ioSplitPct}%` }} className="min-w-[180px] flex flex-col">
                 <div className="flex items-center justify-between mb-2">
-                  <label className="block text-sm font-medium text-gray-700">입력</label>
+                  <label className={`block text-sm font-medium ${ioLabelClasses}`}>입력</label>
                   <div className="flex gap-2">
                     {samples && samples.length > 0 && (
                       <select
-                        className="px-2 py-1 text-xs border border-gray-300 rounded"
+                        className={controlSelectClasses('sm')}
                         onChange={(e) => {
                           const idx = Number(e.target.value);
                           if (!isNaN(idx)) setInput(samples[idx].input || '');
@@ -334,14 +381,28 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
                         ))}
                       </select>
                     )}
-                    <Button variant="outline" size="sm" onClick={() => setInput('')}>지우기</Button>
-                    <Button variant="outline" size="sm" onClick={() => navigator.clipboard.writeText(input)}>복사</Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className={`px-2 py-1 text-xs ${isDarkTheme ? 'border-slate-600 text-slate-200 hover:bg-slate-800' : ''}`}
+                      onClick={() => setInput('')}
+                    >
+                      지우기
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className={`px-2 py-1 text-xs ${isDarkTheme ? 'border-slate-600 text-slate-200 hover:bg-slate-800' : ''}`}
+                      onClick={() => navigator.clipboard.writeText(input)}
+                    >
+                      복사
+                    </Button>
                   </div>
                 </div>
                 <textarea
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
-                  className="w-full flex-1 p-2 border border-gray-300 rounded-md font-mono text-sm resize-none focus:outline-none focus:ring-2 focus:ring-[#58A0C8]"
+                  className={`w-full flex-1 p-2 rounded-md font-mono text-sm resize-none focus:outline-none focus:ring-2 focus:ring-[#58A0C8] ${ioTextareaClasses}`}
                   placeholder="표준 입력에 전달할 값을 입력하세요"
                 />
               </div>
@@ -358,39 +419,44 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
               {/* 출력 패널 */}
               <div style={{ width: `${100 - ioSplitPct}%` }} className="min-w-[180px] flex flex-col">
                 <div className="flex items-center justify-between mb-2">
-                  <label className="block text-sm font-medium text-gray-700">출력</label>
+                  <label className={`block text-sm font-medium ${ioLabelClasses}`}>출력</label>
                   <div className="flex gap-2">
                     <Button
                       variant="outline"
                       size="sm"
+                      className={`px-2 py-1 text-xs ${isDarkTheme ? 'border-slate-600 text-slate-200 hover:bg-slate-800' : ''}`}
                       onClick={() => navigator.clipboard.writeText(`${executionResult?.output || ''}${executionResult?.error ? `\n${executionResult.error}` : ''}`)}
-                    >복사</Button>
+                    >
+                      복사
+                    </Button>
                   </div>
                 </div>
-                <Card className="flex-1">
+                <Card className={`flex-1 ${isDarkTheme ? 'bg-slate-900 border-slate-700 text-slate-100' : ''}`}>
                   <div className="h-full overflow-auto space-y-2">
                     {executionResult ? (
                       <>
-                        <div className="text-sm text-gray-700">
-                          <span className="mr-3">상태: <span className={`font-mono ${executionResult.status === 'SUCCESS' ? 'text-green-600' : executionResult.status === 'TIMEOUT' ? 'text-orange-600' : 'text-red-600'}`}>{executionResult.status}</span></span>
+                        <div className={`text-sm ${isDarkTheme ? 'text-slate-200' : 'text-gray-700'}`}>
+                          <span className="mr-3">상태: <span className={`font-mono ${executionResult.status === 'SUCCESS' ? 'text-green-500' : executionResult.status === 'TIMEOUT' ? 'text-orange-500' : 'text-red-500'}`}>{executionResult.status}</span></span>
                           <span className="mr-3">시간: <span className="font-mono">{executionResult.executionTime}ms</span></span>
                           <span>메모리: <span className="font-mono">{executionResult.memoryUsage}KB</span></span>
                         </div>
                         {executionResult.output && (
                           <div>
                             <div className="text-sm font-medium mb-1">stdout</div>
-                            <pre className="mt-1 p-2 bg-gray-100 rounded text-sm font-mono whitespace-pre-wrap">{executionResult.output}</pre>
+                            <pre className={`mt-1 p-2 rounded text-sm font-mono whitespace-pre-wrap ${isDarkTheme ? 'bg-slate-800 text-slate-100' : 'bg-gray-100 text-gray-900'}`}>{executionResult.output}</pre>
                           </div>
                         )}
                         {executionResult.error && (
                           <div>
-                            <div className="text-sm font-medium text-red-600 mb-1">stderr</div>
-                            <pre className="mt-1 p-2 bg-red-50 rounded text-sm font-mono whitespace-pre-wrap text-red-700">{executionResult.error}</pre>
+                            <div className={`text-sm font-medium mb-1 ${isDarkTheme ? 'text-red-400' : 'text-red-600'}`}>stderr</div>
+                            <pre className={`mt-1 p-2 rounded text-sm font-mono whitespace-pre-wrap ${isDarkTheme ? 'bg-red-900/40 text-red-300' : 'bg-red-50 text-red-700'}`}>{executionResult.error}</pre>
                           </div>
                         )}
                       </>
                     ) : (
-                      <div className="text-gray-500 text-center py-8">실행 결과가 여기에 표시됩니다.</div>
+                      <div className={`${isDarkTheme ? 'text-slate-400' : 'text-gray-500'} text-center py-8`}>
+                        실행 결과가 여기에 표시됩니다.
+                      </div>
                     )}
                   </div>
                 </Card>
