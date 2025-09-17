@@ -155,10 +155,12 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
   };
 
   const handleExecute = () => {
+    if (!code.trim()) return;
     onExecute?.(code, language, input);
   };
 
   const handleSubmit = () => {
+    if (!code.trim()) return;
     onSubmit?.(code, language);
   };
 
@@ -182,7 +184,9 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
       if (!ctrl) return;
       if (e.key === 'Enter') {
         e.preventDefault();
-        onExecute?.(code, language, input);
+        if (code.trim()) {
+          onExecute?.(code, language, input);
+        }
       }
       if (e.key.toLowerCase() === 's') {
         e.preventDefault();
@@ -242,6 +246,8 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
     ? 'bg-slate-900 border border-slate-600 text-slate-100'
     : 'bg-white border border-gray-300 text-gray-900';
 
+  const isCodeEmpty = code.trim().length === 0;
+
   return (
     <div ref={containerRef} className={`relative flex flex-col h-full min-h-0 ${className}`}>
       {/* Toolbar */}
@@ -292,7 +298,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
             variant="secondary"
             size="sm"
             onClick={handleExecute}
-            disabled={isExecuting}
+            disabled={isExecuting || isCodeEmpty}
             loading={isExecuting}
           >
             실행 (Ctrl/Cmd+Enter)
@@ -301,7 +307,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
             variant="primary"
             size="sm"
             onClick={handleSubmit}
-            disabled={isSubmitting}
+            disabled={isSubmitting || isCodeEmpty}
             loading={isSubmitting}
           >
             제출

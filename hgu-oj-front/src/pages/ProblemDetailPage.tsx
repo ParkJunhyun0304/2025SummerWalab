@@ -7,6 +7,7 @@ import { Button } from '../components/atoms/Button';
 import { ExecutionResult } from '../types';
 import { executionService } from '../services/executionService';
 import { submissionService, SubmissionListItem } from '../services/submissionService';
+import { useAuthStore } from '../stores/authStore';
 
 type StatusTone = 'success' | 'error' | 'warning' | 'info';
 
@@ -198,6 +199,7 @@ export const ProblemDetailPage: React.FC = () => {
     const saved = localStorage.getItem('oj:editorTheme');
     return saved === 'light' || saved === 'dark' ? saved : 'dark';
   });
+  const { isAuthenticated } = useAuthStore();
   const submissionPollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const submissionPollAttemptsRef = useRef(0);
   const copyFeedbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -379,6 +381,11 @@ export const ProblemDetailPage: React.FC = () => {
   };
 
   const handleSubmit = async (code: string, language: string) => {
+    if (!isAuthenticated) {
+      alert('로그인이 필요합니다. 로그인 페이지로 이동합니다.');
+      navigate('/login', { replace: true });
+      return;
+    }
     setIsSubmitting(true);
     try {
       const result = await submissionService.submitSolution({
@@ -469,7 +476,7 @@ export const ProblemDetailPage: React.FC = () => {
 
   const { data: mySubmissionsResponse, isLoading: isLoadingSubmissions } = useQuery({
     queryKey: ['my-submissions', submissionProblemKey],
-    queryFn: () => submissionService.getMySubmissions(submissionProblemKey!),
+    queryFn: () => submissionProblemKey ? submissionService.getMySubmissions(submissionProblemKey) : Promise.resolve({ items: [], total: 0 }),
     enabled: activeSection === 'submissions' && !!submissionProblemKey,
     staleTime: 30_000,
   });
@@ -613,26 +620,28 @@ export const ProblemDetailPage: React.FC = () => {
           {/* Scrollable problem content - headerless, edge-to-edge */}
           <div className="flex-1 overflow-auto no-scrollbar">
             <div className="px-6 py-4 space-y-6">
-              <div className="flex items-center gap-3">
+              <div className="flex items-start gap-3">
                 <Button
                   variant="ghost"
                   size="sm"
-                  className={isDarkTheme ? 'text-slate-200 hover:bg-slate-800' : ''}
+                  className={`mt-1 ${isDarkTheme ? 'text-slate-200 hover:bg-slate-800' : ''}`}
                   onClick={() => navigate(-1)}
                 >
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                     <polyline points="15 18 9 12 15 6" />
                   </svg>
                 </Button>
-                <h1 className={`text-xl font-semibold flex items-center gap-2 ${headingTextClass}`}>
-                  {problem.title}
-                  {problem.solved && (
-                    <span className="inline-flex items-center px-2 py-0.5 text-[10px] font-semibold rounded bg-green-100 text-green-700">Solved</span>
-                  )}
-                </h1>
-                <div className={`flex flex-wrap items-center gap-3 text-xs ${subtleTextClass}`}>
-                  <span>ID {problem.displayId ?? problem.id}</span>
-                  <span>시간 {problem.timeLimit}ms · 메모리 {problem.memoryLimit}MB</span>
+                <div className="flex-1 flex flex-col gap-1">
+                  <h1 className={`text-xl font-semibold flex items-center gap-2 ${headingTextClass}`}>
+                    {problem.title}
+                    {problem.solved && (
+                      <span className="inline-flex items-center px-2 py-0.5 text-[10px] font-semibold rounded bg-green-100 text-green-700">Solved</span>
+                    )}
+                  </h1>
+                  <div className={`flex flex-wrap items-center gap-3 text-xs ${subtleTextClass}`}>
+                    <span>ID {problem.displayId ?? problem.id}</span>
+                    <span>시간 {problem.timeLimit}ms · 메모리 {problem.memoryLimit}MB</span>
+                  </div>
                 </div>
               </div>
 
