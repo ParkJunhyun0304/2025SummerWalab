@@ -85,6 +85,7 @@ export interface Workbook {
 
 export interface WorkbookProblem {
   id: number;
+  problemId?: number;
   problem: Problem;
   order: number;
   addedTime: string;
