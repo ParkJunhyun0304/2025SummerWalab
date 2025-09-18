@@ -1,20 +1,20 @@
 from fastapi import APIRouter, Depends, HTTPException
+from app.security.deps import get_userdata
+from app.user.DTO import UserData
 from app.workbook.service import WorkbookService
 from app.workbook.schemas import WorkbookCreate, Workbook, WorkbookProblemCreate, WorkbookProblem
 from app.config.database import get_session
 from sqlalchemy.ext.asyncio import AsyncSession
+import app.workbook.service as serv
 
 router = APIRouter(prefix="/api/workbook", tags=["workbook"])
 
-
 @router.post("/", response_model=Workbook)
 async def create_workbook(
-    workbook: WorkbookCreate,
-    db: AsyncSession = Depends(get_session)
-):
-    """문제집 생성"""
-    workbook_service = WorkbookService(db)
-    return await workbook_service.create_workbook(workbook)
+        workbook: WorkbookCreate,
+        userdata:UserData = Depends(get_userdata),
+        db: AsyncSession = Depends(get_session)):
+    return await serv.create_workbook(workbook, userdata.username, db)
 
 
 @router.get("/", response_model=list[Workbook])

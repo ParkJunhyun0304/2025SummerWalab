@@ -1,35 +1,36 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import joinedload
-from app.workbook.models import Workbook, WorkbookProblem
-from app.user.models import User
-from app.workbook.schemas import WorkbookCreate, WorkbookUpdate, WorkbookProblemCreate
-from app.config.database import SessionLocal
-from typing import List, Optional
-from datetime import datetime
 
+from app.config.database import get_session
+from app.utils.databse import transactional
+from app.workbook.models import Workbook, WorkbookProblem
+from app.workbook.schemas import WorkbookCreate, WorkbookUpdate, WorkbookProblemCreate
+from typing import List, Optional
+import app.user.user_repository as user_repo
+from fastapi import HTTPException
+
+@transactional
+async def create_workbook(workbook_data: WorkbookCreate, username: str, db: AsyncSession) -> Workbook:
+    user = await user_repo.find_by_username(db, username)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    user_id = user.id
+    workbook = Workbook(
+        title=workbook_data.title,
+        description=workbook_data.description,
+        category=workbook_data.category,
+        created_by_id=user_id,
+        is_public=workbook_data.is_public,
+    )
+    db.add(workbook)
+    await db.flush()
+    return workbook
 
 class WorkbookService:
     def __init__(self, db: AsyncSession):
         self.db = db
-    
-    async def create_workbook(self, workbook_data: WorkbookCreate, user_id: int) -> Workbook:
-        """문제집 생성"""
-        now = datetime.utcnow()
-        workbook = Workbook(
-            title=workbook_data.title,
-            description=workbook_data.description,
-            category=workbook_data.category,
-            created_by_id=user_id,
-            is_public=workbook_data.is_public,
-            created_at=now,
-            updated_at=now
-        )
-        self.db.add(workbook)
-        await self.db.commit()
-        await self.db.refresh(workbook)
-        return workbook
-    
+
     async def get_workbook(self, workbook_id: int) -> Optional[Workbook]:
         """문제집 조회"""
         result = await self.db.execute(

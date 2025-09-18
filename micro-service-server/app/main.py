@@ -6,7 +6,7 @@ from datetime import datetime
 
 from sqlalchemy import text
 from sqlalchemy.orm import configure_mappers
-from app.config.database import get_session, engine
+from app.config.database import get_session, engine, Base
 
 from app.auth import routes as auth_routes
 from app.problem import routes as problem_routes
@@ -26,17 +26,12 @@ app.include_router(execution_routes.router)
 @app.on_event("startup")
 async def startup_event():
     try:
-        async with engine.begin() as conn:
-            await conn.execute(
-                text(
-                    "ALTER TABLE public.workbook ADD COLUMN IF NOT EXISTS category VARCHAR(100);"
-                )
-            )
-        print("Database connection successful.")
         configure_mappers()
-    except Exception as e:
-        print(f"Database connection failed: {e}")
-
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        logging.info("DB init success")
+    except Exception:
+        logging.exception("DB init fail")
 
 def root():
     return {"status": "ok", "message": "Service is running"}

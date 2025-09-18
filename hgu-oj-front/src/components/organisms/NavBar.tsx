@@ -7,6 +7,7 @@ export const NavBar: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const { user, isAuthenticated, logout } = useAuthStore();
+  const isAdmin = user?.admin_type === 'Admin' || user?.admin_type === 'Super Admin';
 
   const isActive = (path: string) => {
     if (path === '/') {
@@ -74,6 +75,18 @@ export const NavBar: React.FC = () => {
             >
               대회
             </Link>
+            {isAdmin && (
+              <Link
+                to="/admin"
+                className={`text-sm font-medium transition-colors duration-200 px-3 py-2 focus:outline-none ${
+                  isActive('/admin')
+                    ? 'text-blue-600 font-semibold border-b-2 border-blue-600'
+                    : 'text-black hover:text-gray-600'
+                }`}
+              >
+                관리
+              </Link>
+            )}
           </div>
 
           {/* 사용자 메뉴 - 오른쪽 */}
