@@ -2,7 +2,7 @@ import React from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Card } from '../components/atoms/Card';
 import { Button } from '../components/atoms/Button';
-import { ProblemCard } from '../components/molecules/ProblemCard';
+import { WorkbookProblemList } from '../components/organisms/WorkbookProblemList';
 import { useWorkbook, useWorkbookProblems } from '../hooks/useWorkbooks';
 
 export const WorkbookDetailPage: React.FC = () => {
@@ -14,6 +14,10 @@ export const WorkbookDetailPage: React.FC = () => {
   const { data: problemsData, isLoading: problemsLoading, error: problemsError } = useWorkbookProblems(workbookId);
 
   const handleProblemClick = (problemId: number) => {
+    navigate(`/problems/${problemId}`);
+  };
+
+  const handleSolveProblem = (problemId: number) => {
     navigate(`/problems/${problemId}`);
   };
 
@@ -99,17 +103,11 @@ export const WorkbookDetailPage: React.FC = () => {
             </div>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {problems.map((workbookProblem, index) => (
-              <ProblemCard
-                key={workbookProblem.id}
-                problem={workbookProblem.problem}
-                onClick={handleProblemClick}
-                showOrder={true}
-                order={index + 1}
-              />
-            ))}
-          </div>
+          <WorkbookProblemList
+            problems={problems}
+            onProblemClick={handleProblemClick}
+            onSolve={handleSolveProblem}
+          />
         )}
       </div>
     </div>
