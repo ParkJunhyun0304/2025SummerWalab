@@ -598,7 +598,7 @@ export const ProblemDetailPage: React.FC = () => {
       <div className="container mx-auto px-4 py-8">
         <div className="text-center">
           <h1 className="text-2xl font-bold text-red-600 mb-4">문제를 찾을 수 없습니다</h1>
-          <Button onClick={() => navigate('/problems')}>
+          <Button variant="secondary" onClick={() => navigate('/problems')}>
             문제 목록으로 돌아가기
           </Button>
         </div>
