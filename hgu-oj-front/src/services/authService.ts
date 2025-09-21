@@ -35,8 +35,28 @@ export const authService = {
 
   // 사용자 프로필 조회
   getProfile: async (): Promise<UserProfile> => {
-    const response = await api.get<UserProfile>('/profile');
-    return response.data;
+    const response = await api.get<any>('/profile');
+    const raw = response.data;
+
+    if (raw && typeof raw === 'object' && raw.user) {
+      const { user, ...rest } = raw;
+      return {
+        id: user.id,
+        username: user.username,
+        real_name: rest.real_name ?? user.real_name,
+        email: user.email,
+        admin_type: user.admin_type,
+        problem_permission: user.problem_permission,
+        create_time: user.create_time,
+        last_login: user.last_login,
+        two_factor_auth: user.two_factor_auth,
+        open_api: user.open_api,
+        is_disabled: user.is_disabled,
+        avatar: rest.avatar,
+      } as UserProfile;
+    }
+
+    return raw as UserProfile;
   },
 
   // 로그아웃

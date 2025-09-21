@@ -247,3 +247,58 @@ export interface UserProfile {
   is_disabled: boolean;
   avatar?: string;
 }
+
+export interface AdminUser extends UserProfile {
+  password?: string;
+  real_tfa?: boolean;
+}
+
+export interface AdminUserListResponse {
+  results: AdminUser[];
+  total: number;
+  offset: number;
+  limit: number;
+}
+
+export interface JudgeServer {
+  id: number;
+  hostname: string;
+  status: string;
+  task_number: number;
+  cpu_core: number;
+  cpu_usage: number;
+  memory_usage: number;
+  judger_version?: string;
+  service_url?: string;
+  ip?: string;
+  last_heartbeat?: string;
+  create_time?: string;
+  is_disabled: boolean;
+}
+
+export interface JudgeServerListResponse {
+  token?: string;
+  servers: JudgeServer[];
+}
+
+export interface ServiceHealthStatus {
+  name: string;
+  status: 'online' | 'offline' | 'unknown';
+  latency?: number;
+  message?: string;
+  lastChecked?: string;
+}
+
+export interface AdminContest extends Contest {
+  password?: string | null;
+  real_time_rank: boolean;
+  allowed_ip_ranges: string[];
+  status?: string;
+}
+
+export interface AdminContestListResponse {
+  results: AdminContest[];
+  total: number;
+  offset: number;
+  limit: number;
+}
