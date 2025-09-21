@@ -12,6 +12,7 @@ interface ProblemListProps {
   totalPages?: number;
   currentPage?: number;
   onPageChange?: (page: number) => void;
+  showStats?: boolean;
 }
 
 export const ProblemList: React.FC<ProblemListProps> = ({
@@ -24,6 +25,7 @@ export const ProblemList: React.FC<ProblemListProps> = ({
   totalPages = 1,
   currentPage = 1,
   onPageChange,
+  showStats = true,
 }) => {
   const getDifficultyColor = (difficulty: string) => {
     switch (difficulty) {
@@ -115,10 +117,10 @@ export const ProblemList: React.FC<ProblemListProps> = ({
         <div className="px-6 py-4 border-b border-gray-200 bg-gray-50">
           <div className="grid grid-cols-12 gap-4 text-sm font-medium text-gray-500 uppercase tracking-wider">
             <div className="col-span-1 text-center">번호</div>
-            <div className="col-span-6">제목</div>
-            <div className="col-span-2 text-center">난이도</div>
-            <div className="col-span-1 text-center">제출</div>
-            <div className="col-span-2 text-center">정답률</div>
+            <div className={showStats ? 'col-span-6' : 'col-span-8'}>제목</div>
+            <div className={showStats ? 'col-span-2 text-center' : 'col-span-3 text-center'}>난이도</div>
+            {showStats && <div className="col-span-1 text-center">제출</div>}
+            {showStats && <div className="col-span-2 text-center">정답률</div>}
           </div>
         </div>
         <div className="divide-y divide-gray-200">
@@ -134,7 +136,7 @@ export const ProblemList: React.FC<ProblemListProps> = ({
                   <div className="col-span-1 text-sm font-medium text-gray-900 text-center">
                     {problem.displayId ?? problem.id}
                   </div>
-                  <div className="col-span-6">
+                  <div className={showStats ? 'col-span-6' : 'col-span-8'}>
                     <div className="flex items-center gap-2">
                       <div className="text-sm font-medium text-gray-900 hover:text-blue-600">
                         {problem.title}
@@ -146,20 +148,24 @@ export const ProblemList: React.FC<ProblemListProps> = ({
                       )}
                     </div>
                   </div>
-                  <div className="col-span-2 text-center">
+                  <div className={showStats ? 'col-span-2 text-center' : 'col-span-3 text-center'}>
                     <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getDifficultyColor(problem.difficulty)}`}>
                       {getDifficultyText(problem.difficulty)}
                     </span>
                   </div>
-                  <div className="col-span-1 text-sm text-gray-500 text-center">
-                    {problem.submissionNumber || 0}
-                  </div>
-                  <div className="col-span-2 text-sm text-gray-500 text-center">
-                    {problem.acceptedNumber && problem.submissionNumber
-                      ? `${Math.round((problem.acceptedNumber / problem.submissionNumber) * 100)}%`
-                      : '0%'
-                    }
-                  </div>
+                  {showStats && (
+                    <div className="col-span-1 text-sm text-gray-500 text-center">
+                      {problem.submissionNumber || 0}
+                    </div>
+                  )}
+                  {showStats && (
+                    <div className="col-span-2 text-sm text-gray-500 text-center">
+                      {problem.acceptedNumber && problem.submissionNumber
+                        ? `${Math.round((problem.acceptedNumber / problem.submissionNumber) * 100)}%`
+                        : '0%'
+                      }
+                    </div>
+                  )}
                 </div>
               </div>
             );

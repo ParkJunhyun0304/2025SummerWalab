@@ -6,6 +6,7 @@ interface InputProps extends BaseComponentProps {
   placeholder?: string;
   value?: string;
   onChange?: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  onKeyDown?: (e: React.KeyboardEvent<HTMLInputElement>) => void;
   disabled?: boolean;
   error?: string;
   label?: string;
@@ -17,6 +18,7 @@ export const Input: React.FC<InputProps> = ({
   placeholder,
   value,
   onChange,
+  onKeyDown,
   disabled = false,
   error,
   label,
@@ -42,6 +44,7 @@ export const Input: React.FC<InputProps> = ({
         placeholder={placeholder}
         value={value}
         onChange={onChange}
+        onKeyDown={onKeyDown}
         disabled={disabled}
         required={required}
         className={classes}
