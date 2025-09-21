@@ -28,7 +28,9 @@ export const WorkbookCard: React.FC<WorkbookCardProps> = ({ workbook, onClick })
       {/* 설명 */}
       <div className="flex-1 mb-3">
         <p className="text-gray-600 text-sm line-clamp-3 h-12 overflow-hidden">
-          {workbook.description.replace(/<[^>]*>/g, '') || '설명이 없습니다.'}
+          {(typeof workbook.description === 'string' && workbook.description.length > 0
+            ? workbook.description.replace(/<[^>]*>/g, '')
+            : '설명이 없습니다.')}
         </p>
       </div>
       
@@ -41,7 +43,9 @@ export const WorkbookCard: React.FC<WorkbookCardProps> = ({ workbook, onClick })
               공개
             </span>
           )}
-          <span className="whitespace-nowrap">{new Date(workbook.created_at).toLocaleDateString()}</span>
+          <span className="whitespace-nowrap">
+            {workbook.created_at ? new Date(workbook.created_at).toLocaleDateString() : ''}
+          </span>
         </div>
       </div>
       

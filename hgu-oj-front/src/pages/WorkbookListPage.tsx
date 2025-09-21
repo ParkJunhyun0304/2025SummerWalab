@@ -34,9 +34,9 @@ export const WorkbookListPage: React.FC = () => {
   };
 
   // 클라이언트 사이드 검색 필터링 및 정렬
-  const filteredWorkbooks = workbooks?.filter(workbook => 
-    workbook.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    workbook.description.toLowerCase().includes(searchQuery.toLowerCase())
+  const filteredWorkbooks = workbooks?.filter((workbook) =>
+    (workbook.title ?? '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (workbook.description ?? '').toLowerCase().includes(searchQuery.toLowerCase())
   ).sort((a, b) => {
     if (filter.sortBy === 'created_at') {
       const dateA = new Date(a.created_at).getTime();
