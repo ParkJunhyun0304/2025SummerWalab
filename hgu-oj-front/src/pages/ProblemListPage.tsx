@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useProblems } from '../hooks/useProblems';
+import { ProblemFilter } from '../types';
 import { ProblemList } from '../components/organisms/ProblemList';
 import { useProblemStore } from '../stores/problemStore';
 import { SearchBar } from '../components/molecules/SearchBar';
@@ -28,9 +29,10 @@ export const ProblemListPage: React.FC = () => {
   ) || [];
 
   const handleFilterChange = (newFilter: { difficulty?: string }) => {
+    const difficulty = (newFilter.difficulty as ProblemFilter['difficulty']) || undefined;
     setFilter({
       ...newFilter,
-      difficulty: (newFilter.difficulty as 'EASY' | 'MEDIUM' | 'HARD') || undefined,
+      difficulty,
       page: 1,
     });
   };

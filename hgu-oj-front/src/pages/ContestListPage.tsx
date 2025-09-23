@@ -13,7 +13,7 @@ export const ContestListPage: React.FC = () => {
   const { data, isLoading, error } = useContests({
     keyword: searchQuery,
     status: statusFilter,
-    limit: 20
+    limit: 20,
   });
 
   const handleContestClick = (contestId: number) => {
@@ -104,9 +104,9 @@ export const ContestListPage: React.FC = () => {
                 className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-900 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500 sm:w-40"
               >
                 <option value="">전체</option>
-                <option value="ongoing">진행 중</option>
-                <option value="upcoming">시작 예정</option>
-                <option value="ended">종료됨</option>
+                <option value="0">진행 중</option>
+                <option value="1">시작 예정</option>
+                <option value="-1">종료됨</option>
               </select>
             </div>
           </div>
@@ -114,7 +114,7 @@ export const ContestListPage: React.FC = () => {
 
 
         {/* 대회 목록 */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-5">
           {data?.data.length === 0 ? (
             <div className="col-span-full text-center py-12">
               <div className="text-gray-600 text-lg mb-4">대회가 없습니다</div>
@@ -126,7 +126,7 @@ export const ContestListPage: React.FC = () => {
               return (
                 <Card
                   key={contest.id}
-                  className="mx-auto w-full max-w-[320px] p-3 hover:shadow-lg transition-shadow cursor-pointer h-56 flex flex-col"
+                  className="mx-auto w-full max-w-[420px] p-4 hover:shadow-lg transition-shadow cursor-pointer h-56 flex flex-col"
                   onClick={() => handleContestClick(contest.id)}
                 >
                   {/* 제목과 상태 */}

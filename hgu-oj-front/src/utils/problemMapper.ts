@@ -1,5 +1,23 @@
 import { Problem } from '../types';
 
+const normalizeTags = (value: any): string[] => {
+  if (!value) return [];
+  const source = Array.isArray(value) ? value : [value];
+  return source
+    .map((tag) => {
+      if (!tag) return null;
+      if (typeof tag === 'string') return tag;
+      if (typeof tag === 'object') {
+        if ('name' in tag && tag.name) return String(tag.name);
+        if ('tag' in tag && tag.tag) return String(tag.tag);
+        if ('tagName' in tag && tag.tagName) return String(tag.tagName);
+        if ('value' in tag && tag.value) return String(tag.value);
+      }
+      return null;
+    })
+    .filter((name): name is string => Boolean(name));
+};
+
 export const mapProblem = (raw: any): Problem => ({
   id: raw.id,
   displayId: raw.displayId ?? raw._id ?? String(raw.id ?? ''),
@@ -14,7 +32,14 @@ export const mapProblem = (raw: any): Problem => ({
   hint: raw.hint,
   createTime: raw.createTime ?? raw.create_time ?? new Date().toISOString(),
   lastUpdateTime: raw.lastUpdateTime ?? raw.last_update_time,
-  tags: raw.tags ?? [],
+  tags: normalizeTags(
+    raw.tags
+      ?? raw.problem_tags
+      ?? raw.problemTags
+      ?? raw.tag_list
+      ?? raw.tagList
+      ?? raw.tagNames,
+  ),
   languages: raw.languages ?? [],
   createdBy: raw.created_by
     ? {
@@ -28,4 +53,5 @@ export const mapProblem = (raw: any): Problem => ({
   submissionNumber: raw.submission_number ?? raw.submissionNumber,
   acceptedNumber: raw.accepted_number ?? raw.acceptedNumber,
   ruleType: raw.rule_type ?? raw.ruleType,
+  totalScore: raw.total_score ?? raw.totalScore,
 });

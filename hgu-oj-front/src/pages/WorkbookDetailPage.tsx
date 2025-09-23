@@ -6,6 +6,8 @@ import { ProblemList } from '../components/organisms/ProblemList';
 import { SearchBar } from '../components/molecules/SearchBar';
 import { useWorkbook, useWorkbookProblems } from '../hooks/useWorkbooks';
 import { Problem } from '../types';
+import { useQuery } from '@tanstack/react-query';
+import { problemService } from '../services/problemService';
 
 export const WorkbookDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -36,6 +38,90 @@ export const WorkbookDetailPage: React.FC = () => {
     });
   };
 
+  const getErrorMessage = (error: unknown) => {
+    if (!error) return '';
+    return error instanceof Error ? error.message : '알 수 없는 오류가 발생했습니다.';
+  };
+
+  const problems = problemsData?.data || [];
+
+  const overviewItems = useMemo(
+    () => [
+      {
+        label: '작성자',
+        value: workbook?.created_by_id ? `User ${workbook.created_by_id}` : '-',
+      },
+      { label: '생성일', value: formatDate(workbook?.created_at) },
+      { label: '최근 수정일', value: formatDate(workbook?.updated_at) },
+      {
+        label: '공개 여부',
+        value: workbook ? (workbook.is_public ? '공개' : '비공개') : '-',
+      },
+      { label: '문제 수', value: `${workbook?.problemCount ?? problems.length}` },
+      { label: '카테고리', value: workbook?.category ?? '-' },
+    ],
+    [workbook, problems.length],
+  );
+
+  const normalizedProblems: Problem[] = useMemo(() => {
+    return problems
+      .map((item) => item.problem)
+      .filter((problem): problem is Problem => Boolean(problem));
+  }, [problems]);
+
+  const problemIds = useMemo(
+    () => normalizedProblems.map((problem) => problem.id).filter((id): id is number => Number.isFinite(id)),
+    [normalizedProblems],
+  );
+
+  const problemIdKey = problemIds.join('-');
+
+  const { data: statusMap, isLoading: statusLoading } = useQuery(
+    {
+      queryKey: ['problem-status-map', problemIdKey],
+      queryFn: () => problemService.getProblemStatusMap(problemIds),
+      enabled: problemIds.length > 0,
+    },
+  );
+
+  const enrichedProblems = useMemo(() => {
+    if (!statusMap) return normalizedProblems;
+    return normalizedProblems.map((problem) => {
+      const override = statusMap[problem.id];
+      if (!override) return problem;
+      const overrideAny = override as any;
+      return {
+        ...problem,
+        myStatus: override.myStatus ?? overrideAny.my_status ?? problem.myStatus,
+        solved: override.solved ?? overrideAny.solved ?? problem.solved,
+        submissionNumber: override.submissionNumber ?? overrideAny.submission_number ?? problem.submissionNumber,
+        acceptedNumber: override.acceptedNumber ?? overrideAny.accepted_number ?? problem.acceptedNumber,
+      };
+    });
+  }, [normalizedProblems, statusMap]);
+
+  const filteredProblems = useMemo(() => {
+    return enrichedProblems.filter((problem) => {
+      const matchesSearch =
+        problem.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (problem.description && problem.description.toLowerCase().includes(searchQuery.toLowerCase()));
+      const matchesDifficulty = difficultyFilter ? problem.difficulty === difficultyFilter : true;
+      return matchesSearch && matchesDifficulty;
+    });
+  }, [enrichedProblems, searchQuery, difficultyFilter]);
+
+  const solvedCount = useMemo(() => {
+    const isSolved = (problem: Problem) => {
+      if (problem.solved) return true;
+      const status = problem.myStatus ?? (problem as any).my_status;
+      if (status == null) return false;
+      const normalized = String(status).trim().toUpperCase();
+      if (!normalized) return false;
+      return normalized === 'AC' || normalized === 'ACCEPTED' || normalized === '0';
+    };
+    return enrichedProblems.reduce((count, problem) => (isSolved(problem) ? count + 1 : count), 0);
+  }, [enrichedProblems]);
+
   if (workbookLoading) {
     return (
       <div className="flex h-64 items-center justify-center">
@@ -56,24 +142,6 @@ export const WorkbookDetailPage: React.FC = () => {
       </div>
     );
   }
-
-  const problems = problemsData?.data || [];
-
-  const normalizedProblems: Problem[] = useMemo(() => {
-    return problems
-      .map((item) => item.problem)
-      .filter((problem): problem is Problem => Boolean(problem));
-  }, [problems]);
-
-  const filteredProblems = useMemo(() => {
-    return normalizedProblems.filter((problem) => {
-      const matchesSearch =
-        problem.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (problem.description && problem.description.toLowerCase().includes(searchQuery.toLowerCase()));
-      const matchesDifficulty = difficultyFilter ? problem.difficulty === difficultyFilter : true;
-      return matchesSearch && matchesDifficulty;
-    });
-  }, [normalizedProblems, searchQuery, difficultyFilter]);
 
   const handleSearchChange = (query: string) => {
     setSearchQuery(query);
@@ -185,65 +253,78 @@ export const WorkbookDetailPage: React.FC = () => {
             <h2 className="text-2xl font-semibold text-slate-900 dark:text-slate-100">포함된 문제</h2>
             <p className="text-sm text-slate-500 dark:text-slate-400">문제집에 포함된 문제 목록과 난이도를 확인하세요.</p>
           </div>
-        <span className="text-sm font-medium text-slate-500 dark:text-slate-400">
+          <span className="text-sm font-medium text-slate-500 dark:text-slate-400">
             총 {workbook.problemCount ?? problems.length}문제
           </span>
         </div>
 
         <div className="mt-6">
-          {problemsLoading ? (
+          {problemsLoading || statusLoading ? (
             <div className="flex h-32 items-center justify-center">
               <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-blue-600"></div>
             </div>
-        ) : problemsError ? (
-          <div className="text-center py-12">
-            <div className="text-red-600 text-lg mb-4">문제 목록을 불러오는 중 오류가 발생했습니다.</div>
-            <p className="text-gray-600">{problemsError.message}</p>
-          </div>
-        ) : (
-          <>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-4 ml-2">
-                <div className="text-sm text-gray-500">총 문제 수</div>
-                <div className="text-2xl font-bold text-blue-600">{filteredProblems.length}</div>
+          ) : problemsError ? (
+            <div className="text-center py-8">
+              <div className="text-red-600 dark:text-red-400 mb-2">문제 목록을 불러오는 중 오류가 발생했습니다.</div>
+              <p className="text-sm text-slate-600 dark:text-slate-300">{getErrorMessage(problemsError)}</p>
+            </div>
+          ) : (
+            <div className="space-y-6">
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                <div className="ml-2 flex flex-wrap items-baseline gap-6">
+                  <div className="flex items-baseline gap-2 whitespace-nowrap">
+                    <span className="text-sm text-gray-500">총 문제 수</span>
+                    <span className="font-mono text-2xl font-bold text-blue-600">
+                      {enrichedProblems.length}
+                    </span>
+                  </div>
+                  <div className="flex items-baseline gap-2 whitespace-nowrap">
+                    <span className="text-sm text-gray-500">맞힌 문제</span>
+                    <span className="font-mono text-2xl font-bold text-emerald-600">
+                      {solvedCount} / {enrichedProblems.length}
+                    </span>
+                  </div>
+                </div>
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
+                  <div className="max-w-md">
+                    <SearchBar
+                      value={searchQuery}
+                      onChange={handleSearchChange}
+                      placeholder="문제 검색..."
+                    />
+                  </div>
+                  <div>
+                    <select
+                      value={difficultyFilter}
+                      onChange={(e) => handleFilterChange({ difficulty: e.target.value })}
+                      className="px-4 py-2 rounded-lg text-sm font-medium border border-gray-300 bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    >
+                      <option value="">All</option>
+                      <option value="Low">Level1</option>
+                      <option value="Mid">Level2</option>
+                      <option value="High">Level3</option>
+                    </select>
+                  </div>
+                </div>
               </div>
-              <div className="flex items-center gap-4">
-                <div className="max-w-md">
-                  <SearchBar
-                    value={searchQuery}
-                    onChange={handleSearchChange}
-                    placeholder="문제 검색..."
-                  />
-                </div>
-                <div>
-                  <select
-                    value={difficultyFilter}
-                    onChange={(e) => handleFilterChange({ difficulty: e.target.value })}
-                    className="px-4 py-2 rounded-lg text-sm font-medium border border-gray-300 bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  >
-                    <option value="">All</option>
-                    <option value="Low">Level1</option>
-                    <option value="Mid">Level2</option>
-                    <option value="High">Level3</option>
-                  </select>
-                </div>
+
+              <div>
+                <ProblemList
+                  problems={filteredProblems}
+                  onProblemClick={handleProblemClick}
+                  onSearch={() => {}}
+                  onFilterChange={handleFilterChange}
+                  currentFilter={{ difficulty: difficultyFilter }}
+                  isLoading={false}
+                  totalPages={1}
+                  currentPage={1}
+                  showStats={false}
+                  showStatus
+                />
               </div>
             </div>
-
-            <ProblemList
-              problems={filteredProblems}
-              onProblemClick={handleProblemClick}
-              onSearch={() => {}}
-              onFilterChange={handleFilterChange}
-              currentFilter={{ difficulty: difficultyFilter }}
-              isLoading={false}
-              totalPages={1}
-              currentPage={1}
-              showStats={false}
-            />
-          </>
-        )}
-      </div>
+          )}
+        </div>
       </Card>
     </div>
   );

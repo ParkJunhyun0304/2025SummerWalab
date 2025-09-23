@@ -1,6 +1,6 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { useMutation } from '@tanstack/react-query';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import {
   useContest,
   useContestAccess,
@@ -8,6 +8,7 @@ import {
   useContestProblems,
   useContestRank,
 } from '../hooks/useContests';
+import { useAuthStore } from '../stores/authStore';
 import { contestService } from '../services/contestService';
 import { Card } from '../components/atoms/Card';
 import { Button } from '../components/atoms/Button';
@@ -43,16 +44,31 @@ const tabs: Array<{ id: ContestTab; label: string; requiresAccess?: boolean }> =
   { id: 'rank', label: '랭크', requiresAccess: true },
 ];
 
+const parseTabFromSearch = (search: string): ContestTab | null => {
+  const params = new URLSearchParams(search);
+  const candidate = params.get('tab') as ContestTab | null;
+  if (candidate && tabs.some((item) => item.id === candidate)) {
+    return candidate;
+  }
+  return null;
+};
+
 export const ContestDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const contestId = id ? parseInt(id, 10) : 0;
   const navigate = useNavigate();
+  const location = useLocation();
 
   const { data: contest, isLoading, error } = useContest(contestId);
   const requiresPassword = useMemo(
     () => contest?.contestType?.toLowerCase().includes('password') ?? false,
     [contest?.contestType],
   );
+
+  const { user: authUser } = useAuthStore();
+
+  const [contestPhase, setContestPhase] = useState<'before' | 'running' | 'after'>('before');
+  const [serverClock, setServerClock] = useState('--:--:--');
 
   const {
     data: accessData,
@@ -61,13 +77,25 @@ export const ContestDetailPage: React.FC = () => {
   } = useContestAccess(contestId, !!contest && requiresPassword);
 
   const [hasAccess, setHasAccess] = useState(false);
-  const [activeTab, setActiveTab] = useState<ContestTab>('overview');
+  const [activeTab, setActiveTab] = useState<ContestTab>(() => parseTabFromSearch(location.search) ?? 'overview');
   const [password, setPassword] = useState('');
   const [passwordError, setPasswordError] = useState<string | null>(null);
 
   const offsetRef = useRef(0);
   const intervalRef = useRef<number | null>(null);
   const [timeLeft, setTimeLeft] = useState('-');
+
+  const startTimeMs = useMemo(() => (contest?.startTime ? new Date(contest.startTime).getTime() : Number.NaN), [contest?.startTime]);
+  const endTimeMs = useMemo(() => (contest?.endTime ? new Date(contest.endTime).getTime() : Number.NaN), [contest?.endTime]);
+
+  const canViewProtectedContent = hasAccess && contestPhase === 'running';
+
+  useEffect(() => {
+    const queryTab = parseTabFromSearch(location.search);
+    if (queryTab && queryTab !== activeTab) {
+      setActiveTab(queryTab);
+    }
+  }, [location.search]);
 
   useEffect(() => {
     if (contest && !requiresPassword) {
@@ -88,12 +116,6 @@ export const ContestDetailPage: React.FC = () => {
   }, [accessError]);
 
   useEffect(() => {
-    if (!hasAccess && tabs.find((item) => item.id === activeTab && item.requiresAccess)) {
-      setActiveTab('overview');
-    }
-  }, [hasAccess, activeTab]);
-
-  useEffect(() => {
     if (!contest) {
       offsetRef.current = 0;
       return;
@@ -103,32 +125,37 @@ export const ContestDetailPage: React.FC = () => {
   }, [contest?.id, contest?.now]);
 
   useEffect(() => {
-    if (!contest?.endTime) {
-      setTimeLeft('-');
-      if (intervalRef.current) {
-        window.clearInterval(intervalRef.current);
-        intervalRef.current = null;
-      }
-      return;
-    }
-
-    const endTimeMs = new Date(contest.endTime).getTime();
-    if (Number.isNaN(endTimeMs)) {
-      setTimeLeft('-');
-      return;
-    }
-
     const update = () => {
-      const now = Date.now() + offsetRef.current;
-      const diff = endTimeMs - now;
-      if (diff <= 0) {
-        setTimeLeft('대회가 종료되었습니다.');
-        if (intervalRef.current) {
-          window.clearInterval(intervalRef.current);
-          intervalRef.current = null;
-        }
+      const nowWithOffset = Date.now() + offsetRef.current;
+      if (Number.isNaN(nowWithOffset)) {
+        setServerClock('--:--:--');
+        setContestPhase('before');
+        setTimeLeft('-');
         return;
       }
+
+      const serverDate = new Date(nowWithOffset);
+      setServerClock(serverDate.toLocaleTimeString('ko-KR', { hour12: false }));
+
+      if (!Number.isNaN(startTimeMs) && nowWithOffset < startTimeMs) {
+        setContestPhase((prev) => (prev !== 'before' ? 'before' : prev));
+      } else if (!Number.isNaN(endTimeMs) && nowWithOffset > endTimeMs) {
+        setContestPhase((prev) => (prev !== 'after' ? 'after' : prev));
+      } else {
+        setContestPhase((prev) => (prev !== 'running' ? 'running' : prev));
+      }
+
+      if (Number.isNaN(endTimeMs)) {
+        setTimeLeft('-');
+        return;
+      }
+
+      const diff = endTimeMs - nowWithOffset;
+      if (diff <= 0) {
+        setTimeLeft('대회가 종료되었습니다.');
+        return;
+      }
+
       const totalSeconds = Math.floor(diff / 1000);
       const days = Math.floor(totalSeconds / 86400);
       const hours = Math.floor((totalSeconds % 86400) / 3600);
@@ -138,12 +165,10 @@ export const ContestDetailPage: React.FC = () => {
       setTimeLeft(formatted);
     };
 
+    update();
     if (intervalRef.current) {
       window.clearInterval(intervalRef.current);
-      intervalRef.current = null;
     }
-
-    update();
     intervalRef.current = window.setInterval(update, 1000);
 
     return () => {
@@ -152,38 +177,117 @@ export const ContestDetailPage: React.FC = () => {
         intervalRef.current = null;
       }
     };
-  }, [contest?.endTime]);
+  }, [startTimeMs, endTimeMs]);
 
   const {
     data: announcements = [] as ContestAnnouncement[],
     isLoading: announcementsLoading,
     error: announcementsError,
     refetch: refetchAnnouncements,
-  } = useContestAnnouncements(contestId, hasAccess);
+  } = useContestAnnouncements(contestId, canViewProtectedContent);
 
   const {
     data: problems = [] as Problem[],
     isLoading: problemsLoading,
     error: problemsError,
     refetch: refetchProblems,
-  } = useContestProblems(contestId, hasAccess);
+  } = useContestProblems(contestId, canViewProtectedContent);
 
   const {
     data: rankData,
     isLoading: rankLoading,
     error: rankError,
     refetch: refetchRank,
-  } = useContestRank(contestId, hasAccess && activeTab === 'rank');
+  } = useContestRank(contestId, canViewProtectedContent && activeTab === 'rank');
 
   const rankEntries: ContestRankEntry[] = rankData?.results ?? [];
 
+  const myRankProgress = useMemo(() => {
+    if (!authUser?.id || !contest) return {} as Record<number, string>;
+    const entry = rankEntries.find((item) => item.user?.id === authUser.id);
+    if (!entry || !entry.submissionInfo) return {} as Record<number, string>;
+
+    const result: Record<number, string> = {};
+    const submissionInfo = entry.submissionInfo as Record<string, any>;
+    const scoreLookup = new Map<number, number>(
+      problems.map((problem) => [problem.id, problem.totalScore ?? 0]),
+    );
+
+    if (contest.ruleType === 'ACM') {
+      Object.entries(submissionInfo).forEach(([problemKey, info]) => {
+        const numericId = Number(problemKey);
+        if (!Number.isFinite(numericId)) return;
+        if (info?.is_ac) {
+          result[numericId] = 'AC';
+          return;
+        }
+        if ((info?.error_number ?? 0) > 0) {
+          result[numericId] = 'WA';
+        }
+      });
+    } else {
+      Object.entries(submissionInfo).forEach(([problemKey, scoreValue]) => {
+        const numericId = Number(problemKey);
+        if (!Number.isFinite(numericId)) return;
+        const score = Number(scoreValue);
+        if (!Number.isFinite(score)) return;
+        const fullScore = scoreLookup.get(numericId) ?? 0;
+        if (fullScore > 0 && score >= fullScore) {
+          result[numericId] = 'AC';
+        } else if (score > 0) {
+          result[numericId] = 'TRIED';
+        } else {
+          result[numericId] = 'WA';
+        }
+      });
+    }
+
+    return result;
+  }, [authUser?.id, rankEntries, contest, problems]);
+
   const problemSummary = useMemo(() => {
-    if (!hasAccess) return '-- / --';
+    if (!canViewProtectedContent) return '-- / --';
     if (problemsLoading) return '로딩 중...';
     const total = problems.length;
-    const attempted = problems.reduce((count, problem) => (problem.myStatus ? count + 1 : count), 0);
-    return `${total} / ${attempted}`;
-  }, [hasAccess, problemsLoading, problems]);
+    const solved = problems.reduce((count, problem) => {
+      const rawStatus = problem.myStatus ?? (problem as any).my_status;
+      const normalized = rawStatus == null ? '' : String(rawStatus).trim().toUpperCase();
+      const isSolved = problem.solved || normalized === 'AC' || normalized === 'ACCEPTED' || normalized === '0';
+      return isSolved ? count + 1 : count;
+    }, 0);
+    return `${solved} / ${total}`;
+  }, [canViewProtectedContent, problemsLoading, problems]);
+
+  const contestStatus = contest?.status ?? '';
+  const timeLeftDisplay = timeLeft || '-';
+  const timeTextClass = timeLeft.includes('종료')
+    ? 'text-red-600 dark:text-red-400'
+    : 'text-slate-900 dark:text-slate-100';
+
+  const disabledTabs = (tab: ContestTab) => {
+    const tabConfig = tabs.find((item) => item.id === tab);
+    if (!tabConfig?.requiresAccess) {
+      return false;
+    }
+    if (contestPhase !== 'running') {
+      return true;
+    }
+    return !hasAccess;
+  };
+
+  const handleTabChange = useCallback((tabId: ContestTab) => {
+    setActiveTab(tabId);
+    const params = new URLSearchParams(location.search);
+    params.set('tab', tabId);
+    navigate({ pathname: location.pathname, search: params.toString() }, { replace: true });
+  }, [location.pathname, location.search, navigate]);
+
+  useEffect(() => {
+    const requestedTab = parseTabFromSearch(location.search);
+    if (requestedTab && requestedTab !== activeTab) {
+      setActiveTab(requestedTab);
+    }
+  }, [location.search]);
 
   const passwordMutation = useMutation({
     mutationFn: (formPassword: string) => contestService.verifyContestPassword(contestId, formPassword),
@@ -191,10 +295,12 @@ export const ContestDetailPage: React.FC = () => {
       setPassword('');
       setPasswordError(null);
       setHasAccess(true);
-      refetchAnnouncements();
-      refetchProblems();
-      if (activeTab === 'rank') {
-        refetchRank();
+      if (contestPhase === 'running') {
+        refetchAnnouncements();
+        refetchProblems();
+        if (activeTab === 'rank') {
+          refetchRank();
+        }
       }
     },
     onError: (mutError: unknown) => {
@@ -245,17 +351,6 @@ export const ContestDetailPage: React.FC = () => {
       </div>
     );
   }
-
-  const contestStatus = contest.status ?? '';
-  const timeLeftDisplay = timeLeft || '-';
-  const timeTextClass = timeLeft.includes('종료')
-    ? 'text-red-600 dark:text-red-400'
-    : 'text-slate-900 dark:text-slate-100';
-
-  const disabledTabs = (tab: ContestTab) => {
-    const tabConfig = tabs.find((item) => item.id === tab);
-    return !!(tabConfig?.requiresAccess && !hasAccess);
-  };
 
   const renderOverview = () => {
     const overviewItems = [
@@ -358,6 +453,10 @@ export const ContestDetailPage: React.FC = () => {
   };
 
   const renderAnnouncements = () => {
+    if (contestPhase !== 'running') {
+      return <div className="text-sm text-gray-600">대회 진행 중에만 공지를 확인할 수 있습니다.</div>;
+    }
+
     if (!hasAccess) {
       return <div className="text-sm text-gray-600">비밀번호 인증 후 공지를 확인할 수 있습니다.</div>;
     }
@@ -400,6 +499,16 @@ export const ContestDetailPage: React.FC = () => {
   };
 
   const renderProblems = () => {
+    if (contestPhase !== 'running') {
+      return (
+        <div className="text-sm text-gray-600">
+          {contestPhase === 'before'
+            ? '대회 시작 이후에 문제를 공개합니다.'
+            : '대회가 종료되어 문제 열람이 제한됩니다.'}
+        </div>
+      );
+    }
+
     if (!hasAccess) {
       return <div className="text-sm text-gray-600">비밀번호 인증 후 문제를 확인할 수 있습니다.</div>;
     }
@@ -416,10 +525,35 @@ export const ContestDetailPage: React.FC = () => {
       return <div className="text-sm text-red-600">문제 목록을 불러오는 중 오류가 발생했습니다.</div>;
     }
 
-    return <ContestProblemList problems={problems} />;
+    return (
+      <ContestProblemList
+        problems={problems}
+        onProblemClick={(problem) => {
+          const displayId = problem.displayId ?? problem.id;
+          const query = new URLSearchParams();
+          query.set('contestId', String(contestId));
+          if (displayId != null) {
+            query.set('displayId', String(displayId));
+          }
+          navigate(`/problems/${problem.id}?${query.toString()}`);
+        }}
+        disabled={contestPhase !== 'running'}
+        statusOverrides={myRankProgress}
+      />
+    );
   };
 
   const renderRank = () => {
+    if (contestPhase !== 'running') {
+      return (
+        <div className="text-sm text-gray-600">
+          {contestPhase === 'before'
+            ? '대회 시작 후에 랭크가 공개됩니다.'
+            : '대회가 종료되어 랭크 확인이 제한됩니다.'}
+        </div>
+      );
+    }
+
     if (!hasAccess) {
       return <div className="text-sm text-gray-600">비밀번호 인증 후 랭크를 확인할 수 있습니다.</div>;
     }
@@ -441,6 +575,16 @@ export const ContestDetailPage: React.FC = () => {
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      {contestPhase !== 'running' && (
+        <Card className="mb-6 border border-amber-200 bg-amber-50 px-6 py-4 text-amber-800 dark:border-amber-500/40 dark:bg-amber-900/30 dark:text-amber-100">
+          <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+            <span className="font-semibold">
+              {contestPhase === 'before' ? '대회 시작 전입니다.' : '대회가 종료되었습니다.'}
+            </span>
+            <span className="text-sm">현재 서버 시간: <span className="font-mono text-base">{serverClock}</span></span>
+          </div>
+        </Card>
+      )}
       <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-stretch">
         <Button
           variant="secondary"
@@ -460,7 +604,7 @@ export const ContestDetailPage: React.FC = () => {
               </div>
               <div className="flex flex-1 flex-col rounded-xl bg-sky-50 px-4 py-2.5 dark:bg-sky-900/30">
                 <span className="text-[11px] font-semibold uppercase tracking-wide text-sky-700 dark:text-sky-200">
-                  총 문제수 / 제출한 문제수
+                  맞힌 문제 / 전체 문제
                 </span>
                 <span className="mt-1 text-base font-semibold text-slate-900 dark:text-slate-100 sm:text-lg whitespace-nowrap">{problemSummary}</span>
               </div>
@@ -470,7 +614,7 @@ export const ContestDetailPage: React.FC = () => {
       </div>
 
       <div className="flex flex-col lg:flex-row gap-6">
-        <aside className="lg:w-56 xl:w-64 space-y-2">
+        <aside className="lg:w-40 xl:w-52 space-y-2">
           {tabs.map((tab) => {
             const disabled = disabledTabs(tab.id);
             const isActive = activeTab === tab.id;
@@ -480,9 +624,11 @@ export const ContestDetailPage: React.FC = () => {
                 type="button"
                 onClick={() => {
                   if (!disabled) {
-                    setActiveTab(tab.id);
+                    handleTabChange(tab.id);
                   }
                 }}
+                disabled={disabled}
+                aria-disabled={disabled}
                 className={`w-full text-left px-4 py-3 rounded-lg font-medium transition-colors ${
                   isActive ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 hover:bg-blue-50'
                 } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}

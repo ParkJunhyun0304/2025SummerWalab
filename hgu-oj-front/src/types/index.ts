@@ -39,6 +39,7 @@ export interface Problem {
   submissionNumber?: number;
   acceptedNumber?: number;
   ruleType?: string;
+  totalScore?: number;
 }
 
 // 제출 관련 타입
@@ -179,7 +180,7 @@ export interface LanguageOption {
 
 // 필터 관련 타입
 export interface ProblemFilter {
-  difficulty?: 'EASY' | 'MEDIUM' | 'HARD';
+  difficulty?: 'Low' | 'Mid' | 'High';
   search?: string;
   page?: number;
   limit?: number;
