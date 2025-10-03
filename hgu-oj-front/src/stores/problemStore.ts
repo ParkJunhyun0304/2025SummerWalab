@@ -27,6 +27,10 @@ export const useProblemStore = create<ProblemState & ProblemActions>((set) => ({
   filter: {
     page: 1,
     limit: 20,
+    searchField: 'title',
+    sortField: 'number',
+    sortOrder: 'asc',
+    statusFilter: 'all',
   },
   totalCount: 0,
   isLoading: false,

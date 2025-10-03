@@ -20,17 +20,30 @@ export interface SubmissionDetail {
   result?: number | string;
   status?: string;
   statistic_info?: Record<string, unknown> | null;
+  problem?: number | string;
+  problem_id?: number | string;
+  problemId?: number | string;
+  language?: string;
+  language_name?: string;
+  code?: string;
+  user?: {
+    id?: number;
+    username?: string;
+  };
+  user_id?: number;
+  userId?: number;
+  username?: string;
   [key: string]: unknown;
 }
 
 export interface SubmissionListItem extends SubmissionDetail {
-  language?: string;
   create_time?: string;
   createTime?: string;
   execution_time?: number;
   executionTime?: number;
   memory?: number;
   memoryUsage?: number;
+  submissionId?: number | string;
 }
 
 export interface SubmissionListResponse {
@@ -117,7 +130,10 @@ export const submissionService = {
     }
     return response.data;
   },
-  getMySubmissions: async (problemId: number | string, options?: { limit?: number; offset?: number; page?: number }): Promise<SubmissionListResponse> => {
+  getMySubmissions: async (
+    problemId: number | string,
+    options?: { limit?: number; offset?: number; page?: number; contestId?: number | string },
+  ): Promise<SubmissionListResponse> => {
     const limit = options?.limit ?? 20;
     const offset = options?.offset ?? 0;
     const page = options?.page ?? Math.floor(offset / Math.max(limit, 1)) + 1;
@@ -130,7 +146,12 @@ export const submissionService = {
       myself: '1',
     };
 
-    const response = await api.get<any>('/submissions', params);
+    const basePath = options?.contestId != null ? '/contest_submissions' : '/submissions';
+    if (options?.contestId != null) {
+      params.contest_id = String(options.contestId);
+    }
+
+    const response = await api.get<any>(basePath, params);
     if (!response.success) {
       const message = response.message || '제출 목록을 불러오지 못했습니다.';
       throw new Error(message);

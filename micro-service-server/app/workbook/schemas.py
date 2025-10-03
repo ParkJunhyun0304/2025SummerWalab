@@ -1,19 +1,39 @@
 from datetime import datetime
 from typing import Optional, List
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, validator
 
 
 class ProblemSummary(BaseModel):
     id: int
+    original_id: Optional[str] = Field(default=None, alias="_id")
     title: str
     description: Optional[str] = None
     difficulty: Optional[str] = None
     time_limit: Optional[int] = None
     memory_limit: Optional[int] = None
+    tags: List[str] = []
 
     class Config:
         from_attributes = True
+        allow_population_by_field_name = True
+
+    @validator('tags', pre=True, always=True)
+    def extract_tag_names(cls, value):
+        if value is None:
+            return []
+        tag_names: List[str] = []
+        try:
+            for item in value:
+                if isinstance(item, str):
+                    tag_names.append(item)
+                elif hasattr(item, 'name'):
+                    tag_names.append(getattr(item, 'name'))
+                elif isinstance(item, dict) and 'name' in item:
+                    tag_names.append(str(item['name']))
+        except TypeError:
+            return []
+        return tag_names
 
 
 class WorkbookBase(BaseModel):
