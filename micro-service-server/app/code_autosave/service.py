@@ -1,12 +1,52 @@
+import os
+from dotenv import load_dotenv
+from sqlalchemy.ext.asyncio import AsyncSession
+
 import app.code_autosave.repository as repo
+from app.code_autosave.models import ProblemCode
+from app.config.redis import get_redis
+from app.user.DTO import UserData
+from app.utils.databse import transactional
+
+load_dotenv()
+CODE_SAVE_PREFIX = os.getenv("REDIS_CODE_SAVE_PREFIX")
+LOCAL_TOKEN_COOKIE_NAME = os.getenv("LOCAL_TOKEN_COOKIE_NAME")
+CODE_SAVE_TTL_SECONDS = int(os.getenv("CODE_SAVE_TTL_SECONDS"))
 
 
-async def get_code(problem_id, language, userdata, db):
-    data = await repo.find_by_problem_id_and_user_id_and_language(problem_id, userdata.username, language, db)
-    if not data:
-        return ""
-    return data.code
+async def get_code(problem_id, language, userdata, db: AsyncSession):
+    code = await _get_code_by_redis(problem_id, language, userdata)
+    if code:
+        return code
+    record = await repo.find_by_problem_id_and_user_id_and_language(problem_id, userdata.user_id, language, db)
+    return record.code or ""
 
 
-def save_code(problem_id, language, userdata, db):
-    return None
+async def save_code(problem_id: int, language, code, userdata: UserData):
+    await _save_code_to_redis(problem_id, language, code, userdata.user_id)
+    return
+
+
+async def _get_code_by_redis(problem_id, language, user_id: int) -> str:
+    redis = await get_redis()
+    key = _create_redis_key(problem_id, language, user_id)
+    data = await redis.get(key)
+    return data
+
+
+async def _save_code_to_redis(problem_id: int, language: str, code: str, user_id: int):
+    redis = await get_redis()
+    key = _create_redis_key(problem_id, language, user_id)
+    await redis.set(key, code, CODE_SAVE_TTL_SECONDS)
+    return
+
+
+@transactional
+async def _save_code_to_database(problem_id: int, language: str, code: str, user_id: int, db: AsyncSession):
+    entity = ProblemCode(problem_id=problem_id, user_id=user_id, language=language, code=code)
+    await repo.save(entity, db)
+    return
+
+
+async def _create_redis_key(problem_id: int, language: str, user_id: int) -> str:
+    return f"{CODE_SAVE_PREFIX}:data:user:{user_id}:problem:{problem_id}:lang:{language}"

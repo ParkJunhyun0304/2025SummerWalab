@@ -17,4 +17,3 @@ logging.basicConfig(
 
 # 로거 가져오기
 logger = logging.getLogger("fastapi_app")
-logger.info("로깅 설정 완료")
