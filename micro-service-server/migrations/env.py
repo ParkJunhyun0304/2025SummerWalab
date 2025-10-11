@@ -1,12 +1,24 @@
 from __future__ import annotations
 
+import os
+import sys
 from logging.config import fileConfig
 
 from alembic import context
 from sqlalchemy import pool
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
+# Add the project root directory to the Python path
+# This is crucial for Alembic to find your model modules
+sys.path.insert(0, os.path.realpath(os.path.join(os.path.dirname(__file__), '..')))
+
+# Import your models here to ensure they are registered with Base.metadata
 from app.config.database import Base, DATABASE_URL
+# import app.auth.models
+import app.user.models
+import app.problem.models
+import app.workbook.models
+import app.code_autosave.models
 
 
 def _sync_database_url() -> str:

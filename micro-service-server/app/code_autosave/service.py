@@ -49,7 +49,7 @@ async def save_code_to_database(problem_id: int, language: str, code: str, user_
     return
 
 
-async def get_data_key(problem_id: int, language: str, user_id: int) -> str:
+def get_data_key(problem_id: int, language: str, user_id: int) -> str:
     return f"{CODE_SAVE_PREFIX}:data:user:{user_id}:problem:{problem_id}:lang:{language}"
 
 
