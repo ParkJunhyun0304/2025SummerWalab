@@ -4,14 +4,15 @@ from datetime import datetime
 from fastapi import FastAPI
 from sqlalchemy.orm import configure_mappers
 from app.auth import routes as auth_routes
-from app.code_autosave.listener import code_save_listener  # 리스너 import
-from app.config.database import engine, Base
+from app.code_autosave.listener import code_save_listener
 from app.config.settings import settings
 from app.execution import routes as execution_routes
 from app.problem import routes as problem_routes
+from app.code_autosave import routes as auto_save_routes
 from app.security.cors import setup_cors
 from app.utils.logging import logger
 from app.workbook import routes as workbook_routes
+from app.config.database import engine, Base
 
 app = FastAPI(**settings.fastapi_kwargs)
 setup_cors(app)
@@ -20,6 +21,7 @@ app.include_router(auth_routes.router)
 app.include_router(problem_routes.router)
 app.include_router(workbook_routes.router)
 app.include_router(execution_routes.router)
+app.include_router(auto_save_routes.router)
 
 
 @asynccontextmanager
