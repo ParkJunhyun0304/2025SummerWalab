@@ -1,9 +1,6 @@
 from typing import Optional
-
-from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-
 from app.code_autosave.models import ProblemCode
 
 

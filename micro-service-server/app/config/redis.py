@@ -1,6 +1,4 @@
-import os
-
-import aioredis
+import os, aioredis
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -11,6 +9,7 @@ code_save_client = aioredis.from_url(REDIS_URL + "/10", decode_responses=True)
 
 async def get_redis():
     return redis_client
+
 
 async def get_redis_code_save():
     return code_save_client
