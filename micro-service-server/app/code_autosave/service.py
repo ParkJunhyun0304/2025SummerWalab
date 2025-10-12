@@ -13,12 +13,14 @@ LOCAL_TOKEN_COOKIE_NAME = os.getenv("LOCAL_TOKEN_COOKIE_NAME")
 CODE_SAVE_TTL_SECONDS = int(os.getenv("CODE_SAVE_TTL_SECONDS"))
 
 
-async def get_code(problem_id, language, userdata, db: AsyncSession):
-    code = await _get_code_by_redis(problem_id, language, userdata)
+async def get_code(problem_id, language, user_id: int, db: AsyncSession):
+    code = await _get_code_by_redis(problem_id, language, user_id)
     if code:
         return code
-    record = await repo.find_by_problem_id_and_user_id_and_language(problem_id, userdata.user_id, language, db)
-    return record.code or ""
+    record = await repo.find_by_problem_id_and_user_id_and_language(problem_id, user_id, language, db)
+    if not record:
+        return ""
+    return record.code
 
 
 async def save_code(problem_id: int, language, code, userdata: UserData):
@@ -44,7 +46,11 @@ async def _save_code_to_redis(problem_id: int, language: str, code: str, user_id
 
 @transactional
 async def save_code_to_database(problem_id: int, language: str, code: str, user_id: int, db: AsyncSession):
+    current_data = await repo.find_by_problem_id_and_user_id_and_language(problem_id, user_id, language, db)
     entity = ProblemCode(problem_id=problem_id, user_id=user_id, language=language, code=code)
+    if current_data:
+        entity.id = current_data.id
+
     await repo.save(entity, db)
     return
 

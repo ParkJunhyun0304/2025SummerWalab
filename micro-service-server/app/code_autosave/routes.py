@@ -11,29 +11,34 @@ import app.code_autosave.service as serv
 router = APIRouter(prefix="/api/code", tags=["code-saving"])
 
 
-class GetCodeDTO(BaseModel):
-    problem_id: int
+class ReqGetCodeDTO(BaseModel):
     language: str
 
 
-class SaveCodeDTO(BaseModel):
-    problem_id: int
+class ReqSaveCodeDTO(BaseModel):
     language: str
+    code: str
+
+class ResCodeDTO(BaseModel):
     code: str
 
 
 @authorize_roles("Regular User")
 @router.post("/{problem_id}")
 async def save_code(
-        data: SaveCodeDTO,
+        problem_id: int,
+        data: ReqSaveCodeDTO,
         userdata: UserData = Depends(get_userdata)):
-    return await serv.save_code(data.problem_id, data.language, data.code, userdata)
+    await serv.save_code(problem_id, data.language, data.code, userdata)
+    return {"status": "ok"}
 
 
 @authorize_roles("Regular User")
 @router.get("/{problem_id}")
 async def get_code(
-        data: GetCodeDTO,
+        problem_id: int,
+        data: ReqGetCodeDTO = Depends(),
         userdata: UserData = Depends(get_userdata),
-        db: AsyncSession = Depends(get_session)):
-    return serv.get_code(data.problem_id, data.language, userdata, db)
+        db: AsyncSession = Depends(get_session)) -> ResCodeDTO:
+    code = await serv.get_code(problem_id, data.language, userdata.user_id, db)
+    return ResCodeDTO(code=code)

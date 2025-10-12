@@ -38,6 +38,12 @@ if config.config_file_name is not None:
 target_metadata = Base.metadata
 
 
+def _include_object(object_, name, type_, reflected, compare_to):
+    if type_ == "table":
+        return name.startswith("micro_")
+    return True
+
+
 def run_migrations_offline() -> None:
     url = _sync_database_url()
     context.configure(
@@ -45,6 +51,7 @@ def run_migrations_offline() -> None:
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
+        include_object=_include_object,
     )
 
     with context.begin_transaction():
@@ -62,7 +69,11 @@ def run_migrations_online() -> None:
     )
 
     def do_run_migrations(connection):
-        context.configure(connection=connection, target_metadata=target_metadata)
+        context.configure(
+            connection=connection,
+            target_metadata=target_metadata,
+            include_object=_include_object,
+        )
         with context.begin_transaction():
             context.run_migrations()
 

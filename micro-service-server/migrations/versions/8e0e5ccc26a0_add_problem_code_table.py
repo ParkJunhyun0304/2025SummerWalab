@@ -9,8 +9,9 @@ from __future__ import annotations
 
 from typing import Sequence, Union
 
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
+from sqlalchemy.engine.reflection import Inspector
 
 # revision identifiers, used by Alembic.
 revision: str = "8e0e5ccc26a0"
@@ -20,6 +21,19 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
+    connection = op.get_bind()
+    inspector = Inspector.from_engine(connection)
+    tables = inspector.get_table_names(schema="public")
+
+    missing = {name for name in ("problem", "user") if name not in tables}
+    if missing:
+        raise RuntimeError(
+            f"Required tables for micro_problem_code are missing: {', '.join(sorted(missing))}"
+        )
+
+    if "micro_problem_code" in tables:
+        return
+
     op.create_table(
         "micro_problem_code",
         sa.Column("id", sa.Integer(), nullable=False),
@@ -69,6 +83,11 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    connection = op.get_bind()
+    inspector = Inspector.from_engine(connection)
+    if "micro_problem_code" not in inspector.get_table_names(schema="public"):
+        return
+
     op.drop_index(
         op.f("ix_public_micro_problem_code_user_id"),
         table_name="micro_problem_code",
