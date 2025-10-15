@@ -2,6 +2,43 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { UserProfile } from '../types';
 import { authService } from '../services/authService';
+import { queryClient } from '../hooks/useQueryClient';
+import { useProblemStore } from './problemStore';
+
+const clearOjStorage = () => {
+  if (typeof window === 'undefined') {
+    return;
+  }
+  const prefixes = ['oj:'];
+  const storages: Array<Storage> = [];
+  try {
+    if (window.localStorage) storages.push(window.localStorage);
+  } catch (err) {
+    console.warn('localStorage 접근 불가', err);
+  }
+  try {
+    if (window.sessionStorage) storages.push(window.sessionStorage);
+  } catch (err) {
+    console.warn('sessionStorage 접근 불가', err);
+  }
+  storages.forEach((storage) => {
+    const keysToRemove: string[] = [];
+    for (let i = 0; i < storage.length; i += 1) {
+      const key = storage.key(i);
+      if (!key) continue;
+      if (prefixes.some((prefix) => key.startsWith(prefix))) {
+        keysToRemove.push(key);
+      }
+    }
+    keysToRemove.forEach((key) => {
+      try {
+        storage.removeItem(key);
+      } catch (err) {
+        console.warn('스토리지 항목 제거 실패', key, err);
+      }
+    });
+  });
+};
 
 interface AuthState {
   user: UserProfile | null;
@@ -81,6 +118,20 @@ export const useAuthStore = create<AuthState & AuthActions>()(
         } catch (error) {
           console.error('로그아웃 중 오류:', error);
         } finally {
+          clearOjStorage();
+          queryClient.clear();
+          const problemStore = useProblemStore.getState();
+          problemStore.setProblems([]);
+          problemStore.setCurrentProblem(null);
+          problemStore.setTotalCount(0);
+          problemStore.setFilter({
+            page: 1,
+            limit: 20,
+            searchField: 'title',
+            sortField: 'number',
+            sortOrder: 'asc',
+            statusFilter: 'all',
+          });
           set({
             user: null,
             isAuthenticated: false,
