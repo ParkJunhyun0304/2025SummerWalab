@@ -15,6 +15,8 @@ export interface Problem {
   _id?: string | number;
   title: string;
   description: string;
+  visible?: boolean;
+  isPublic?: boolean;
   difficulty: 'Low' | 'Mid' | 'High';
   timeLimit: number;
   memoryLimit: number;
