@@ -6,7 +6,7 @@ import { ProblemList } from '../components/organisms/ProblemList';
 import { useProblemStore } from '../stores/problemStore';
 import { resolveProblemStatus } from '../utils/problemStatus';
 import { useAuthStore } from '../stores/authStore';
-import { PROBLEM_STATUS_LABELS } from '../constants/problemStatus';
+import { PROBLEM_STATUS_LABELS, ProblemStatusKey } from '../constants/problemStatus';
 
 export const ProblemListPage: React.FC = () => {
   const navigate = useNavigate();

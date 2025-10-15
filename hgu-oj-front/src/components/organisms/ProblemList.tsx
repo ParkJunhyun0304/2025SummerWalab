@@ -180,7 +180,6 @@ export const ProblemList: React.FC<ProblemListProps> = ({
         <div className="divide-y divide-gray-200">
           {problems.map((problem) => {
             const badge = getStatusBadge(problem);
-            const statusState = resolveStatusState(problem);
             return (
               <div
                 key={problem.id}

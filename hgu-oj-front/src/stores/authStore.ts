@@ -5,6 +5,35 @@ import { authService } from '../services/authService';
 import { queryClient } from '../hooks/useQueryClient';
 import { useProblemStore } from './problemStore';
 
+const invalidateUserScopedQueries = () => {
+  const userScopedKeys = new Set<string>([
+    'problems',
+    'problem',
+    'contest-problems',
+    'contest-problem',
+    'contest-problem-list',
+    'contest-rank-progress',
+    'contest-rank',
+    'workbook-problems',
+    'workbook-problem-list',
+    'workbook',
+  ]);
+
+  queryClient.invalidateQueries({
+    predicate: (query) => {
+      const rootKey = Array.isArray(query.queryKey) ? query.queryKey[0] : undefined;
+      return typeof rootKey === 'string' && userScopedKeys.has(rootKey);
+    },
+    refetchType: 'all',
+  });
+  queryClient.removeQueries({
+    predicate: (query) => {
+      const rootKey = Array.isArray(query.queryKey) ? query.queryKey[0] : undefined;
+      return typeof rootKey === 'string' && userScopedKeys.has(rootKey);
+    },
+  });
+};
+
 const clearOjStorage = () => {
   if (typeof window === 'undefined') {
     return;
@@ -101,6 +130,7 @@ export const useAuthStore = create<AuthState & AuthActions>()(
             isLoading: false,
             error: null,
           });
+          invalidateUserScopedQueries();
 
           return true;
         } catch (error) {
@@ -119,6 +149,7 @@ export const useAuthStore = create<AuthState & AuthActions>()(
           console.error('로그아웃 중 오류:', error);
         } finally {
           clearOjStorage();
+          invalidateUserScopedQueries();
           queryClient.clear();
           const problemStore = useProblemStore.getState();
           problemStore.setProblems([]);
