@@ -6,7 +6,7 @@ import tempfile
 from datetime import datetime
 from typing import List, Dict, Any, Optional
 
-from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
+from fastapi import APIRouter, UploadFile, File, HTTPException, Depends, Query
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
@@ -17,41 +17,7 @@ from app.config.database import get_session
 from app.problem.models import Problem, ProblemTag, problem_tags_association_table
 from app.problem.json_problem_parser import ZIPJSONProblemParser
 from app.problem.service import ProblemService
-
-class ProblemTagSchema(BaseModel):
-    id: int
-    name: str
-
-    class Config:
-        from_attributes = True
-
-class TestCaseScoreSchema(BaseModel):
-    input_name: str
-    output_name: str
-    score: int
-    
-    class Config:
-        from_attributes = True
-
-class ProblemSchema(BaseModel):
-    id: int
-    _id: str
-    title: str
-    description: str
-    time_limit: int
-    memory_limit: int
-    create_time: datetime
-    last_update_time: datetime
-    created_by_id: int
-    rule_type: str
-    visible: bool
-    difficulty: Optional[str]
-    total_score: int
-    test_case_score: Optional[List[Dict[str, Any]]] = []
-    tags: List[ProblemTagSchema] = []
-
-    class Config:
-        from_attributes = True
+from app.problem.schemas import ProblemSchema, ProblemListResponse
 
 router = APIRouter(
     prefix="/api/problem",
@@ -166,3 +132,28 @@ async def import_problem(
         await file.close()
 
     return created_or_updated_problems
+
+# 문제 필터 및 카운트에 필요한 api들
+
+# 태그별 문제수 조회할 때 필요한거
+@router.get("/tags/counts")
+async def get_tag_count(db: AsyncSession = Depends(get_session)):
+    service = ProblemService(db)
+    return await service.get_tag_count()
+
+# 태그 필터링, 정렬 한번에 묶어서
+@router.get("/list", response_model=ProblemListResponse)
+async def get_filter_sorted_problems(
+    # 태그로 필털이할 때 태그값 받음
+    tags : Optional[List[str]] = Query(None),
+    # 정렬옵션 넣을 때 받을 변수, 기본값 : id
+    sort_option : Optional[str] = Query("id"),
+    # 오름, 내림차순 받을 변수, 기본은 오름차순
+    order : Optional[str] = Query("asc"),
+    # 페이지네이션 관련
+    page : int = Query(1, ge = 1),
+    page_size : int = Query(20, ge=1, le=250),
+    db : AsyncSession = Depends(get_session)
+):
+    service = ProblemService(db)
+    return await service.get_filter_sorted_problems(tags, sort_option, order, page, page_size)
