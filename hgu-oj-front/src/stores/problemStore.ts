@@ -31,6 +31,7 @@ export const useProblemStore = create<ProblemState & ProblemActions>((set) => ({
     sortField: 'number',
     sortOrder: 'asc',
     statusFilter: 'all',
+    tags: [],
   },
   totalCount: 0,
   isLoading: false,

@@ -2,6 +2,7 @@ import React from 'react';
 import { Problem } from '../../types';
 import { Card } from '../atoms/Card';
 import { Button } from '../atoms/Button';
+import { mapDifficulty } from '../../lib/difficulty';
 
 interface ProblemCardProps {
   problem: Problem;
@@ -18,29 +19,25 @@ export const ProblemCard: React.FC<ProblemCardProps> = ({
   showOrder = false, 
   order 
 }) => {
+  const getDifficultyLabel = (difficulty: string) => {
+    const label = mapDifficulty(difficulty);
+    if (label === '-') {
+      return '정보 없음';
+    }
+    return label;
+  };
+
   const getDifficultyColor = (difficulty: string) => {
-    switch (difficulty) {
-      case 'Low':
+    const label = mapDifficulty(difficulty);
+    switch (label) {
+      case 'Easy':
         return 'text-green-600 bg-green-100';
       case 'Mid':
         return 'text-yellow-600 bg-yellow-100';
-      case 'High':
+      case 'Hard':
         return 'text-red-600 bg-red-100';
       default:
         return 'text-gray-600 bg-gray-100';
-    }
-  };
-
-  const getDifficultyText = (difficulty: string) => {
-    switch (difficulty) {
-      case 'Low':
-        return '쉬움';
-      case 'Mid':
-        return '보통';
-      case 'High':
-        return '어려움';
-      default:
-        return difficulty;
     }
   };
 
@@ -65,8 +62,8 @@ export const ProblemCard: React.FC<ProblemCardProps> = ({
             {problem.title}
           </h3>
         </div>
-        <span className={`px-2 py-1 rounded-full text-xs font-medium ${getDifficultyColor(problem.difficulty)}`}>
-          {getDifficultyText(problem.difficulty)}
+        <span className={`px-2 py-1 rounded-full text-xs font-semibold ${getDifficultyColor(problem.difficulty)}`}>
+          {getDifficultyLabel(problem.difficulty)}
         </span>
       </div>
       

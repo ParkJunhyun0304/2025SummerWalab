@@ -1,5 +1,6 @@
-import { api } from './api';
+import { api, apiClient } from './api';
 import { Problem, PaginatedResponse, ProblemFilter } from '../types';
+import { mapDifficulty } from '../lib/difficulty';
 
 const normalizeStatusValue = (status: any): string | undefined => {
   if (status === null || status === undefined) return undefined;
@@ -57,6 +58,34 @@ const normalizeTags = (value: any): string[] | undefined => {
   return tags.length > 0 ? tags : undefined;
 };
 
+const rawMsBase = (import.meta.env.VITE_MS_API_BASE as string | undefined) || '';
+const MS_API_BASE = rawMsBase.replace(/\/$/, '');
+
+const ensureMsBase = () => {
+  if (!MS_API_BASE) {
+    throw new Error('Micro-service API base URL is not configured.');
+  }
+  return MS_API_BASE;
+};
+
+const buildMsUrl = (path: string, params?: Record<string, unknown>) => {
+  const base = ensureMsBase();
+  const search = new URLSearchParams();
+  if (params) {
+    Object.entries(params).forEach(([key, value]) => {
+      if (value === undefined || value === null || value === '') return;
+      if (Array.isArray(value)) {
+        if (value.length === 0) return;
+        search.append(key, value.join(','));
+      } else {
+        search.append(key, String(value));
+      }
+    });
+  }
+  const query = search.toString();
+  return `${base}${path}${query ? `?${query}` : ''}`;
+};
+
 // 적응형 매퍼: 마이크로서비스 또는 OJ 백엔드 형태 모두 지원
 const adaptProblem = (p: any): Problem => {
   if (!p) {
@@ -74,12 +103,13 @@ const adaptProblem = (p: any): Problem => {
   const isMicro = Object.prototype.hasOwnProperty.call(p, 'time_limit');
   const rawDisplayId = p?._id ?? p?.display_id ?? p?.displayId ?? p?.id;
   if (isMicro) {
+    const mappedDifficulty = mapDifficulty(p.difficulty);
     return {
       id: p.id,
       displayId: rawDisplayId ? String(rawDisplayId) : undefined,
       title: p.title,
       description: p.description || '',
-      difficulty: (p.difficulty as any) || 'Low',
+      difficulty: mappedDifficulty !== '-' ? mappedDifficulty as Problem['difficulty'] : (p.difficulty as any) ?? '중',
       timeLimit: p.time_limit,
       memoryLimit: p.memory_limit,
       // best-effort extra stats mapping
@@ -108,55 +138,122 @@ const adaptProblem = (p: any): Problem => {
   const rawStatus = normalizeStatusValue(p.my_status ?? p.myStatus ?? (p as any).myStatus);
   const solved = rawStatus !== undefined ? isAcceptedStatus(rawStatus) : p.solved;
   const normalizedSamples = adaptSamples(p.samples ?? (p as any).Samples);
+  const mappedDifficulty = mapDifficulty((p as Problem).difficulty ?? (p as any).difficulty);
   return {
     ...(p as Problem),
     displayId: rawDisplayId ? String(rawDisplayId) : (p as Problem).displayId,
+    difficulty: mappedDifficulty !== '-' ? mappedDifficulty as Problem['difficulty'] : ((p as Problem).difficulty ?? '중'),
     myStatus: rawStatus,
     solved,
     samples: normalizedSamples ?? (p as Problem).samples,
   } as Problem;
 };
 
+type RequestOptions = {
+  signal?: AbortSignal;
+};
+
 export const problemService = {
   // 문제 목록 조회
-  getProblems: async (filter: ProblemFilter): Promise<PaginatedResponse<Problem>> => {
+  getProblems: async (filter: ProblemFilter, options?: RequestOptions): Promise<PaginatedResponse<Problem>> => {
     const limit = filter.limit && filter.limit > 0 ? filter.limit : 50;
     const page = filter.page && filter.page > 0 ? filter.page : 1;
+
     const params: Record<string, unknown> = {
-      limit,
-      offset: (page - 1) * limit,
+      page,
+      page_size: limit,
     };
+
     const searchValue = filter.search?.trim();
     if (searchValue) {
-      if (filter.searchField === 'tag') {
-        params.tag = searchValue;
-      } else {
-        params.keyword = searchValue;
-        params.search_field = filter.searchField ?? 'title';
+      params.keyword = searchValue;
+      params.search_field = filter.searchField ?? 'title';
+    }
+
+    if (filter.difficulty) {
+      params.difficulty = filter.difficulty;
+    }
+
+    const sortOptionMap: Record<string, string> = {
+      number: 'id',
+      submission: 'submission',
+      accuracy: 'accuracy',
+    };
+
+    if (filter.sortField) {
+      params.sort_option = sortOptionMap[filter.sortField] ?? filter.sortField;
+    }
+    if (filter.sortOrder) {
+      params.order = filter.sortOrder;
+    }
+
+    const tags = (filter.tags ?? []).filter((tag) => typeof tag === 'string' && tag.trim().length > 0);
+    if (tags.length > 0) {
+      params.tags = tags;
+    }
+
+    const url = buildMsUrl('/problem/list', params);
+
+    let responseData: any;
+    let response: Response;
+    try {
+      response = await fetch(url, {
+        method: 'GET',
+        signal: options?.signal,
+        credentials: 'include',
+      });
+    } catch (error: any) {
+      if (error?.name === 'CanceledError' || error?.code === 'ERR_CANCELED') {
+        throw error;
       }
-    }
-    if (filter.difficulty) params.difficulty = filter.difficulty;
-    if (filter.sortField) params.sort_field = filter.sortField;
-    if (filter.sortOrder) params.sort_order = filter.sortOrder;
-
-    const response = await api.get<any>('/problem', params);
-    if (!response.success) {
-      throw new Error(response.message || '문제 목록을 불러오지 못했습니다.');
+      throw new Error(error?.message || '문제 목록을 불러오지 못했습니다.');
     }
 
-    const raw = response.data as any;
+    if (!response.ok) {
+      const detail = await response.text().catch(() => '');
+      throw new Error(detail || `문제 목록을 불러오지 못했습니다. (status ${response.status})`);
+    }
+
+    try {
+      responseData = await response.json();
+    } catch (error) {
+      throw new Error('문제 목록 응답을 파싱하지 못했습니다.');
+    }
+
     let items: any[] = [];
     let total = 0;
-    if (Array.isArray(raw)) {
-      items = raw;
-      total = raw.length;
-    } else if (raw && Array.isArray(raw.results)) {
-      items = raw.results;
-      total = Number(raw.total ?? raw.results.length);
-    } else {
-      items = [];
-      total = 0;
+    let totalPages = 1;
+
+    const candidateCollections = [
+      responseData?.problems,
+      responseData?.data?.problems,
+      responseData?.results,
+      responseData?.data?.results,
+      Array.isArray(responseData) ? responseData : undefined,
+    ];
+
+    const collection = candidateCollections.find((entry) => Array.isArray(entry));
+    if (Array.isArray(collection)) {
+      items = collection;
     }
+
+    const totalCandidates = [
+      responseData?.total,
+      responseData?.data?.total,
+      responseData?.meta?.total,
+      items.length,
+    ];
+    total = Number(totalCandidates.find((value) => value !== undefined && value !== null)) || items.length;
+
+    const totalPagesCandidates = [
+      responseData?.total_pages,
+      responseData?.data?.total_pages,
+      responseData?.meta?.total_pages,
+      Math.ceil(total / limit),
+    ];
+    totalPages =
+      Number(totalPagesCandidates.find((value) => value !== undefined && value !== null)) ||
+      Math.max(1, Math.ceil(total / limit));
 
     const adapted = items.map(adaptProblem);
     return {
@@ -164,7 +261,7 @@ export const problemService = {
       total,
       page,
       limit,
-      totalPages: Math.max(1, Math.ceil((total || adapted.length) / limit)),
+      totalPages,
     };
   },
 
@@ -296,5 +393,55 @@ export const problemService = {
     // OJ에서는 /problem?keyword= 로 검색 지원
     const res = await problemService.getProblems({ ...(filter || {}), search: query, limit: 100 });
     return res;
+  },
+
+  getTagCounts: async (options?: RequestOptions): Promise<Array<{ tag: string; count: number }>> => {
+    const url = buildMsUrl('/problem/tags/counts');
+    let response: Response;
+    let responseData: any;
+    try {
+      response = await fetch(url, {
+        method: 'GET',
+        signal: options?.signal,
+        credentials: 'include',
+      });
+    } catch (error: any) {
+      if (error?.name === 'CanceledError' || error?.code === 'ERR_CANCELED') {
+        throw error;
+      }
+      throw new Error(error?.message || '태그 정보를 불러오지 못했습니다.');
+    }
+
+    if (!response.ok) {
+      const detail = await response.text().catch(() => '');
+      throw new Error(detail || `태그 정보를 불러오지 못했습니다. (status ${response.status})`);
+    }
+
+    try {
+      responseData = await response.json();
+    } catch (error) {
+      throw new Error('태그 정보를 파싱하지 못했습니다.');
+    }
+
+    const collections = [
+      Array.isArray(responseData) ? responseData : undefined,
+      Array.isArray(responseData?.data) ? responseData.data : undefined,
+      Array.isArray(responseData?.tags) ? responseData.tags : undefined,
+    ];
+
+    const source = collections.find((entry) => Array.isArray(entry)) ?? [];
+
+    return source
+      .map((item: any) => {
+        const tag =
+          item?.tag ??
+          item?.name ??
+          item?.label ??
+          '';
+        const count = Number(item?.count ?? item?.total ?? item?.value ?? 0);
+        if (!tag) return null;
+        return { tag: String(tag), count };
+      })
+      .filter((item): item is { tag: string; count: number } => Boolean(item));
   },
 };
