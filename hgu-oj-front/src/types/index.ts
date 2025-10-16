@@ -15,9 +15,7 @@ export interface Problem {
   _id?: string | number;
   title: string;
   description: string;
-  visible?: boolean;
-  isPublic?: boolean;
-  difficulty: 'Low' | 'Mid' | 'High';
+  difficulty: 'Low' | 'Mid' | 'High' | '상' | '중' | '하';
   timeLimit: number;
   memoryLimit: number;
   inputDescription?: string;
@@ -183,7 +181,7 @@ export interface LanguageOption {
 
 // 필터 관련 타입
 export interface ProblemFilter {
-  difficulty?: 'Low' | 'Mid' | 'High';
+  difficulty?: 'Low' | 'Mid' | 'High' | '상' | '중' | '하';
   search?: string;
   page?: number;
   limit?: number;
@@ -191,6 +189,7 @@ export interface ProblemFilter {
   sortField?: 'number' | 'submission' | 'accuracy';
   sortOrder?: 'asc' | 'desc';
   statusFilter?: 'all' | 'solved' | 'wrong' | 'untouched';
+  tags?: string[];
 }
 
 // 컴포넌트 Props 타입

@@ -1,6 +1,7 @@
 import React from 'react';
 import { WorkbookProblem } from '../../types';
 import { Button } from '../atoms/Button';
+import { mapDifficulty } from '../../lib/difficulty';
 
 interface WorkbookProblemListProps {
   problems: WorkbookProblem[];
@@ -14,12 +15,13 @@ export const WorkbookProblemList: React.FC<WorkbookProblemListProps> = ({
   onSolve,
 }) => {
   const getDifficultyColor = (difficulty?: string) => {
-    switch (difficulty) {
-      case 'Low':
+    const label = mapDifficulty(difficulty);
+    switch (label) {
+      case '하':
         return 'text-green-600 bg-green-100';
-      case 'Mid':
+      case '중':
         return 'text-yellow-600 bg-yellow-100';
-      case 'High':
+      case '상':
         return 'text-red-600 bg-red-100';
       default:
         return 'text-gray-600 bg-gray-100';
@@ -27,16 +29,11 @@ export const WorkbookProblemList: React.FC<WorkbookProblemListProps> = ({
   };
 
   const getDifficultyText = (difficulty?: string) => {
-    switch (difficulty) {
-      case 'Low':
-        return 'Level1';
-      case 'Mid':
-        return 'Level2';
-      case 'High':
-        return 'Level3';
-      default:
-        return difficulty ?? '정보 없음';
+    const label = mapDifficulty(difficulty);
+    if (label === '-') {
+      return '정보 없음';
     }
+    return label;
   };
 
   if (!problems.length) {

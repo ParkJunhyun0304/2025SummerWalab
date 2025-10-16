@@ -6,7 +6,7 @@ import { Problem, ProblemFilter } from '../types';
 export const useProblems = (filter: ProblemFilter) => {
   return useQuery({
     queryKey: ['problems', filter],
-    queryFn: () => problemService.getProblems(filter),
+    queryFn: ({ signal }) => problemService.getProblems(filter, { signal }),
     enabled: true,
   });
 };

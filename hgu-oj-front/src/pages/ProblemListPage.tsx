@@ -1,20 +1,53 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import { useProblems } from '../hooks/useProblems';
 import { Problem, ProblemFilter } from '../types';
 import { ProblemList } from '../components/organisms/ProblemList';
 import { useProblemStore } from '../stores/problemStore';
 import { resolveProblemStatus } from '../utils/problemStatus';
 import { useAuthStore } from '../stores/authStore';
-import { PROBLEM_STATUS_LABELS, ProblemStatusKey } from '../constants/problemStatus';
+import { PROBLEM_STATUS_LABELS } from '../constants/problemStatus';
+import { TagFilterBar } from '../components/problems/TagFilterBar';
+import { extractProblemTags } from '../utils/problemTags';
+import { getTagColor } from '../utils/tagColor';
+import { problemService } from '../services/problemService';
+
+const normalizeTags = (tags: string[]): string[] => {
+  const unique = new Set(
+    tags
+      .map((tag) => tag?.trim())
+      .filter((tag): tag is string => Boolean(tag))
+  );
+  return Array.from(unique).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+};
+
+const areTagArraysEqual = (a: string[], b: string[]): boolean => {
+  if (a.length !== b.length) return false;
+  return a.every((value, index) => value === b[index]);
+};
+
+const parseTagsFromQuery = (value: string | null): string[] => {
+  if (!value) return [];
+  return normalizeTags(value.split(','));
+};
 
 export const ProblemListPage: React.FC = () => {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { filter, setFilter } = useProblemStore();
   const [searchQuery, setSearchQuery] = useState('');
   const { isAuthenticated } = useAuthStore();
 
   const { data, isLoading, error } = useProblems(filter);
+  const {
+    data: tagCountsData,
+    isLoading: isTagCountsLoading,
+    error: tagCountsError,
+  } = useQuery({
+    queryKey: ['problem', 'tag-counts'],
+    queryFn: ({ signal }) => problemService.getTagCounts({ signal }),
+  });
 
   const handleProblemClick = (problemId: number) => {
     navigate(`/problems/${problemId}`);
@@ -66,7 +99,55 @@ export const ProblemListPage: React.FC = () => {
       sortOrder: 'asc',
       statusFilter: 'all',
       page: 1,
+      tags: [],
     });
+  };
+
+  const selectedTags = useMemo(
+    () => normalizeTags(filter.tags ?? []),
+    [filter.tags]
+  );
+
+  const searchParamsString = searchParams.toString();
+  const selectedTagsRef = useRef<string[]>(selectedTags);
+
+  useEffect(() => {
+    selectedTagsRef.current = selectedTags;
+  }, [selectedTags]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(searchParamsString);
+    const parsed = parseTagsFromQuery(params.get('tags'));
+    if (!areTagArraysEqual(parsed, selectedTagsRef.current)) {
+      setFilter({ tags: parsed, page: 1 });
+    }
+  }, [searchParamsString, setFilter]);
+
+  useEffect(() => {
+    const normalized = normalizeTags(selectedTags);
+    const params = new URLSearchParams(searchParamsString);
+    const current = params.get('tags');
+
+    if (normalized.length === 0) {
+      if (current) {
+        params.delete('tags');
+        setSearchParams(params, { replace: true });
+      }
+      return;
+    }
+
+    const joined = normalized.join(',');
+    if (current !== joined) {
+      params.set('tags', joined);
+      setSearchParams(params, { replace: true });
+    }
+  }, [selectedTags, searchParamsString, setSearchParams]);
+
+  const handleTagToggle = (tag: string) => {
+    const current = normalizeTags(selectedTags);
+    const exists = current.includes(tag);
+    const next = exists ? current.filter((item) => item !== tag) : normalizeTags([...current, tag]);
+    setFilter({ tags: next, page: 1 });
   };
 
   const processedProblems = useMemo(() => {
@@ -152,7 +233,45 @@ export const ProblemListPage: React.FC = () => {
     });
 
     return sorted;
-  }, [data?.data, searchQuery, filter.searchField, filter.sortField, filter.sortOrder, filter.statusFilter, isAuthenticated]);
+  }, [
+    data?.data,
+    searchQuery,
+    filter.searchField,
+    filter.sortField,
+    filter.sortOrder,
+    filter.statusFilter,
+    isAuthenticated,
+  ]);
+
+  const tagStats = useMemo(() => {
+    return (tagCountsData ?? [])
+      .map(({ tag, count }) => ({
+        name: tag,
+        count,
+        colorScheme: getTagColor(tag),
+      }))
+      .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
+  }, [tagCountsData]);
+
+  const tagCountsErrorMessage = useMemo(() => {
+    if (!tagCountsError) return null;
+    if (tagCountsError instanceof Error) return tagCountsError.message;
+    return typeof tagCountsError === 'string' ? tagCountsError : '태그 정보를 불러오지 못했습니다.';
+  }, [tagCountsError]);
+
+  const hasActiveFilters = useMemo(() => {
+    const sortField = filter.sortField ?? 'number';
+    const sortOrder = filter.sortOrder ?? 'asc';
+    const statusFilter = filter.statusFilter ?? 'all';
+    const searchValue = filter.search?.trim() ?? '';
+    return (
+      selectedTags.length > 0 ||
+      searchValue.length > 0 ||
+      sortField !== 'number' ||
+      sortOrder !== 'asc' ||
+      statusFilter !== 'all'
+    );
+  }, [filter.sortField, filter.sortOrder, filter.statusFilter, filter.search, selectedTags]);
 
   useEffect(() => {
     if (!isAuthenticated && (filter.statusFilter && filter.statusFilter !== 'all')) {
@@ -179,13 +298,13 @@ export const ProblemListPage: React.FC = () => {
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-7xl 2xl:max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8 2xl:px-10 py-8">
         {/* Header */}
-        <div className="mb-8">
+        <div className="mb-6">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex items-center gap-3 lg:ml-2">
               <span className="text-sm text-gray-500">전체 문제 수</span>
               <span className="text-2xl font-bold text-blue-600">{data?.total || 0}</span>
             </div>
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end sm:gap-3">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end sm:gap-3">
               <form onSubmit={handleSearchSubmit} className="flex w-full sm:w-auto sm:min-w-[360px]">
                 <label htmlFor="problem-search" className="sr-only">문제 검색</label>
                 <input
@@ -238,6 +357,36 @@ export const ProblemListPage: React.FC = () => {
             </div>
           </div>
         </div>
+
+        {(isTagCountsLoading || tagCountsErrorMessage || tagStats.length > 0) && (
+          <div className="mb-6 space-y-3">
+            {hasActiveFilters && (
+              <div className="flex justify-start">
+                <button
+                  type="button"
+                  onClick={handleResetFilters}
+                  className="inline-flex items-center gap-2 rounded-full border border-gray-300 bg-white px-4 py-2 text-xs font-semibold text-gray-600 transition hover:bg-gray-100 hover:text-gray-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1"
+                >
+                  ↺ 태그 재설정
+                </button>
+              </div>
+            )}
+            {isTagCountsLoading && (
+              <div className="text-sm text-gray-500">태그를 불러오는 중입니다...</div>
+            )}
+            {!isTagCountsLoading && tagCountsErrorMessage && (
+              <div className="text-sm text-red-600">{tagCountsErrorMessage}</div>
+            )}
+            {!isTagCountsLoading && !tagCountsErrorMessage && tagStats.length > 0 && (
+              <TagFilterBar
+                tags={tagStats}
+                selectedTags={selectedTags}
+                onToggle={handleTagToggle}
+                collapsible
+              />
+            )}
+          </div>
+        )}
 
         <ProblemList
           problems={processedProblems}

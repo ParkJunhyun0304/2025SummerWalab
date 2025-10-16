@@ -1,8 +1,12 @@
-import React from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { Problem } from '../../types';
 import { Button } from '../atoms/Button';
 import { resolveProblemStatus } from '../../utils/problemStatus';
 import { PROBLEM_STATUS_LABELS } from '../../constants/problemStatus';
+import TagChip from '../atoms/TagChip';
+import { extractProblemTags } from '../../utils/problemTags';
+import { getDifficultyMeta, mapDifficulty } from '../../lib/difficulty';
+import { getTagColor } from '../../utils/tagColor';
 
 interface ProblemListProps {
   problems: Problem[];
@@ -39,7 +43,11 @@ export const ProblemList: React.FC<ProblemListProps> = ({
   sortField,
   sortOrder,
 }) => {
-  const renderSortableHeader = (label: string, field: 'number' | 'submission' | 'accuracy', align: 'left' | 'center' | 'right' = 'center') => {
+  const renderSortableHeader = (
+    label: string,
+    field: 'number' | 'submission' | 'accuracy',
+    align: 'left' | 'center' | 'right' = 'center'
+  ) => {
     if (!onSortChange) {
       return (
         <span
@@ -92,19 +100,87 @@ export const ProblemList: React.FC<ProblemListProps> = ({
     return undefined;
   };
 
-  const renderTags = (tags?: string[]) => {
-    if (!tags || tags.length === 0) {
-      return <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-slate-100 text-xs font-medium text-slate-400">태그 없음</span>;
+  const [expandedTags, setExpandedTags] = useState<Record<number, boolean>>({});
+
+  const toggleTagExpansion = useCallback((problemId: number) => {
+    setExpandedTags((previous) => ({
+      ...previous,
+      [problemId]: !previous[problemId],
+    }));
+  }, []);
+
+  const problemTagsMap = useMemo(() => {
+    return problems.reduce<Record<number, string[]>>((acc, problem) => {
+      acc[problem.id] = extractProblemTags(problem);
+      return acc;
+    }, {});
+  }, [problems]);
+
+  const renderTagChips = (problem: Problem) => {
+    const tags = problemTagsMap[problem.id] ?? [];
+    const isExpanded = Boolean(expandedTags[problem.id]);
+    const visibleTags = isExpanded ? tags : tags.slice(0, 2);
+    const hiddenCount = tags.length - visibleTags.length;
+
+    if (tags.length === 0) {
+      return <TagChip label="태그 없음" colorScheme={undefined} />;
     }
 
-    return tags.map((tag) => (
-      <span
-        key={tag}
-        className="inline-flex items-center px-2 py-0.5 rounded-full bg-slate-100 text-xs font-medium text-slate-600"
-      >
-        {tag}
+    return (
+      <>
+        {visibleTags.map((tag) => (
+          <TagChip key={tag} label={tag} colorScheme={getTagColor(tag)} />
+        ))}
+        {hiddenCount > 0 && !isExpanded && (
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              toggleTagExpansion(problem.id);
+            }}
+            className="text-xs font-semibold text-blue-600 hover:underline"
+          >
+            +{hiddenCount}
+          </button>
+        )}
+        {isExpanded && tags.length > 2 && (
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              toggleTagExpansion(problem.id);
+            }}
+            className="text-xs font-semibold text-blue-600 hover:underline"
+          >
+            접기
+          </button>
+        )}
+      </>
+    );
+  };
+
+  const renderDifficultyBadge = (problem: Problem) => {
+    const rawDifficulty =
+      (problem as any).difficulty ??
+      (problem as any).level ??
+      (problem as any).difficulty_level ??
+      (problem as any).difficultyLevel ??
+      (problem as any).difficulty_name ??
+      (problem as any).difficultyName;
+
+    const label = mapDifficulty(rawDifficulty);
+    if (label === '-') {
+      return <span className="text-sm text-gray-400">-</span>;
+    }
+
+    const meta = getDifficultyMeta(rawDifficulty);
+    const className = meta?.className ?? 'bg-blue-100 text-blue-700 border border-blue-200';
+
+    return (
+      <span className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ${className}`}>
+        {label}
       </span>
-    ));
+    );
   };
 
   if (isLoading) {
@@ -146,33 +222,39 @@ export const ProblemList: React.FC<ProblemListProps> = ({
       <div className="bg-white rounded-lg shadow-sm overflow-hidden">
         <div className="px-6 py-4 border-b border-gray-200 bg-gray-50">
           {showStats ? (
-            <div className="grid grid-cols-[120px_minmax(0,1fr)_200px_120px_120px] items-center gap-4">
-              <div className="flex justify-center">
+            <div className="grid grid-cols-[120px_minmax(0,1fr)_220px_110px_120px_120px] items-center gap-4">
+              <div className="flex h-full items-center justify-center">
                 {renderSortableHeader('번호', 'number')}
               </div>
-              <div className="text-center text-sm font-medium uppercase tracking-wider text-gray-500 dark:text-slate-400">
+              <div className="flex h-full items-center text-left text-sm font-medium uppercase tracking-wider text-gray-500 dark:text-slate-400">
                 제목
               </div>
-              <div className="text-center text-sm font-medium uppercase tracking-wider text-gray-500 dark:text-slate-400">
+              <div className="flex h-full items-center justify-end text-sm font-medium uppercase tracking-wider text-gray-500 dark:text-slate-400">
                 태그
               </div>
-              <div className="flex justify-center">
-                {renderSortableHeader('전체 제출수', 'submission')}
+              <div className="flex h-full items-center justify-end text-sm font-medium uppercase tracking-wider text-gray-500 dark:text-slate-400">
+                난이도
               </div>
-              <div className="flex justify-center">
-                {renderSortableHeader('정답률', 'accuracy')}
+              <div className="flex h-full items-center justify-end">
+                {renderSortableHeader('전체 제출수', 'submission', 'right')}
+              </div>
+              <div className="flex h-full items-center justify-end">
+                {renderSortableHeader('정답률', 'accuracy', 'right')}
               </div>
             </div>
           ) : (
-            <div className="grid grid-cols-[150px_minmax(0,1fr)_200px] items-center gap-4">
-              <div className="flex justify-center">
+            <div className="grid grid-cols-[150px_minmax(0,1fr)_220px_110px] items-center gap-4">
+              <div className="flex h-full items-center justify-center">
                 {renderSortableHeader('번호', 'number')}
               </div>
-              <div className="text-center text-sm font-medium uppercase tracking-wider text-gray-500 dark:text-slate-400">
+              <div className="flex h-full items-center text-left text-sm font-medium uppercase tracking-wider text-gray-500 dark:text-slate-400">
                 제목
               </div>
-              <div className="text-center text-sm font-medium uppercase tracking-wider text-gray-500 dark:text-slate-400">
+              <div className="flex h-full items-center justify-end text-sm font-medium uppercase tracking-wider text-gray-500 dark:text-slate-400">
                 태그
+              </div>
+              <div className="flex h-full items-center justify-end text-sm font-medium uppercase tracking-wider text-gray-500 dark:text-slate-400">
+                난이도
               </div>
             </div>
           )}
@@ -183,31 +265,41 @@ export const ProblemList: React.FC<ProblemListProps> = ({
             return (
               <div
                 key={problem.id}
-                className="px-6 py-4 hover:bg-gray-50 cursor-pointer transition-colors"
-                onClick={() => onProblemClick(problem.id)}
+                className="px-6 py-4 transition-colors hover:bg-gray-50"
               >
                 {showStats ? (
-                  <div className="grid grid-cols-[120px_minmax(0,1fr)_200px_120px_120px] items-center gap-4">
-                    <div className="text-sm font-medium text-gray-900 text-center">
+                  <div className="grid grid-cols-[120px_minmax(0,1fr)_220px_110px_120px_120px] items-center gap-4">
+                    <div className="flex h-full items-center justify-center text-sm font-medium text-gray-900">
                       {showOriginalId ? problem._id ?? problem.displayId ?? problem.id : problem.displayId ?? problem.id}
                     </div>
-                    <div className="flex items-center justify-center gap-2 text-center">
-                      <div className="text-sm font-medium text-gray-900 hover:text-blue-600">
+                    <div className="flex h-full items-center justify-start gap-2 text-left">
+                      <button
+                        type="button"
+                        onClick={(event) => {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          onProblemClick(problem.id);
+                        }}
+                        className="text-sm font-semibold text-gray-900 hover:text-blue-600 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded"
+                      >
                         {problem.title}
-                      </div>
+                      </button>
                       {badge && (
                         <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold ${badge.className}`}>
                           {badge.label}
                         </span>
                       )}
                     </div>
-                    <div className="flex justify-center flex-wrap gap-1">
-                      {renderTags(problem.tags)}
+                    <div className="flex min-h-[32px] flex-wrap items-center justify-end gap-1">
+                      {renderTagChips(problem)}
                     </div>
-                    <div className="text-sm text-gray-500 text-center">
+                    <div className="flex h-full items-center justify-end">
+                      {renderDifficultyBadge(problem)}
+                    </div>
+                    <div className="flex h-full items-center justify-end text-sm text-gray-500">
                       {problem.submissionNumber ?? 0}
                     </div>
-                    <div className="text-sm text-gray-500 text-center">
+                    <div className="flex h-full items-center justify-end text-sm text-gray-500">
                       {problem.acceptedNumber && problem.submissionNumber
                         ? `${Math.round((problem.acceptedNumber / problem.submissionNumber) * 100)}%`
                         : '0%'
@@ -215,22 +307,33 @@ export const ProblemList: React.FC<ProblemListProps> = ({
                     </div>
                   </div>
                 ) : (
-                  <div className="grid grid-cols-[150px_minmax(0,1fr)_200px] items-center gap-4">
-                    <div className="text-sm font-medium text-gray-900 text-center">
+                  <div className="grid grid-cols-[150px_minmax(0,1fr)_220px_110px] items-center gap-4">
+                    <div className="flex h-full items-center justify-center text-sm font-medium text-gray-900">
                       {showOriginalId ? problem._id ?? problem.displayId ?? problem.id : problem.displayId ?? problem.id}
                     </div>
-                    <div className="flex items-center justify-center gap-2 text-center">
-                      <div className="text-sm font-medium text-gray-900 hover:text-blue-600">
+                    <div className="flex h-full items-center justify-start gap-2 text-left">
+                      <button
+                        type="button"
+                        onClick={(event) => {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          onProblemClick(problem.id);
+                        }}
+                        className="text-sm font-semibold text-gray-900 hover:text-blue-600 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded"
+                      >
                         {problem.title}
-                      </div>
+                      </button>
                       {badge && (
                         <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold whitespace-nowrap ${badge.className}`}>
                           {badge.label}
                         </span>
                       )}
                     </div>
-                    <div className="flex justify-center flex-wrap gap-1">
-                      {renderTags(problem.tags)}
+                    <div className="flex min-h-[32px] flex-wrap items-center justify-end gap-1">
+                      {renderTagChips(problem)}
+                    </div>
+                    <div className="flex h-full items-center justify-end">
+                      {renderDifficultyBadge(problem)}
                     </div>
                   </div>
                 )}
