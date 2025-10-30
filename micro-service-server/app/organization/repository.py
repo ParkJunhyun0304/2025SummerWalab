@@ -11,24 +11,25 @@ async def check_user_exists_by_organization_name(organization_name: str, db: Asy
     return result.scalar()
 
 async def save(entity: Organization, db: AsyncSession) -> Organization:
-    stmt = (
-        insert(Organization)
-        .values(
-            id=entity.id,
-            name=entity.name,
-            description=entity.description,
-            user_id=entity.user_id,
-        )
-        .on_conflict_do_update(
+    values: dict[str, object] = {
+        "name": entity.name,
+        "description": entity.description,
+    }
+    if entity.id is not None:
+        values["id"] = entity.id
+
+    stmt = insert(Organization).values(**values)
+
+    if entity.id is not None:
+        stmt = stmt.on_conflict_do_update(
             index_elements=["id"],
             set_={
                 "name": entity.name,
                 "description": entity.description,
-                "user_id": entity.user_id,
             },
         )
-        .returning(Organization)
-    )
+
+    stmt = stmt.returning(Organization)
     result = await db.execute(stmt)
     return result.scalar_one()
 
