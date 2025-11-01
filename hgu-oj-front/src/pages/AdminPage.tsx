@@ -1,18 +1,14 @@
 import React, { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import codeTemplates from '../config/codeTemplates.json';
 import { Card } from '../components/atoms/Card';
 import { Input } from '../components/atoms/Input';
 import { Button } from '../components/atoms/Button';
 import {
   adminService,
   CreateContestPayload,
-  CreateProblemPayload,
   CreateWorkbookPayload,
   UpdateUserPayload,
   UpdateContestPayload,
-  AdminProblemDetail,
-  UpdateProblemPayload,
 } from '../services/adminService';
 import { problemService } from '../services/problemService';
 import { useAuthStore } from '../stores/authStore';
@@ -22,103 +18,15 @@ import {
   WorkbookProblem,
   AdminUser,
   AdminContest,
-  JudgeServer,
-  ServiceHealthStatus,
 } from '../types';
-import { RichTextEditor } from '../components/molecules/RichTextEditor';
 import { OrganizationAdminSection } from '../components/admin/organization/OrganizationAdminSection';
-
-const templateMap = codeTemplates as Record<string, string>;
-const availableLanguages = Object.keys(templateMap);
-const canonicalLanguageSet = new Set(availableLanguages);
-const LANGUAGE_ALIAS_MAP: Record<string, string> = {
-  c: 'c',
-  c11: 'c',
-  c99: 'c',
-  cgcc: 'c',
-  cclang: 'c',
-  cpp: 'cpp',
-  'c++': 'cpp',
-  cplusplus: 'cpp',
-  'g++': 'cpp',
-  gplusplus: 'cpp',
-  cpp17: 'cpp',
-  java: 'java',
-  openjdk: 'java',
-  java11: 'java',
-  javascript: 'javascript',
-  js: 'javascript',
-  node: 'javascript',
-  nodejs: 'javascript',
-  javascriptes: 'javascript',
-  python: 'python',
-  py: 'python',
-  python3: 'python',
-  python37: 'python',
-};
-
-const LANGUAGE_BACKEND_VALUE_MAP: Record<string, string> = {
-  javascript: 'JavaScript',
-  python: 'Python3',
-  java: 'Java',
-  cpp: 'C++',
-  c: 'C',
-};
-
-const getLanguageBackendValue = (key: string): string => LANGUAGE_BACKEND_VALUE_MAP[key] ?? key;
-
-const getLanguageLabel = (key: string): string => {
-  const backend = getLanguageBackendValue(key);
-  if (backend === key) {
-    return key.charAt(0).toUpperCase() + key.slice(1);
-  }
-  return backend;
-};
-
-const normalizeLanguageKey = (value: string): string | null => {
-  if (typeof value !== 'string') {
-    return null;
-  }
-  const trimmed = value.trim();
-  if (!trimmed) {
-    return null;
-  }
-  const lower = trimmed.toLowerCase();
-  if (canonicalLanguageSet.has(lower)) {
-    return lower;
-  }
-  const sanitized = lower.replace(/[\s._-]+/g, '');
-  if (canonicalLanguageSet.has(sanitized)) {
-    return sanitized;
-  }
-  const alias =
-    LANGUAGE_ALIAS_MAP[lower] ??
-    LANGUAGE_ALIAS_MAP[sanitized];
-
-  if (alias && canonicalLanguageSet.has(alias)) {
-    return alias;
-  }
-
-  return canonicalLanguageSet.has(trimmed) ? trimmed : null;
-};
-
-const normalizeLanguageList = (languages: unknown): string[] => {
-  if (!Array.isArray(languages)) {
-    return [];
-  }
-  const collected = new Set<string>();
-  for (const entry of languages) {
-    const normalized = normalizeLanguageKey(typeof entry === 'string' ? entry : String(entry));
-    if (normalized) {
-      collected.add(normalized);
-    }
-  }
-  return availableLanguages.filter((lang) => collected.has(lang));
-};
-const toBackendLanguageList = (languages: string[]): string[] =>
-  languages.map((lang) => getLanguageBackendValue(lang));
+import { BulkProblemManager } from '../components/admin/BulkProblemManager';
+import { ProblemCreateSection } from '../components/admin/ProblemCreateSection';
+import { ProblemEditSection } from '../components/admin/ProblemEditSection';
+import { ServerAdminSection } from '../components/admin/ServerAdminSection';
+import { useProblemSelection, AddProblemResult } from '../hooks/useProblemSelection';
+import { ProblemSelectionSection } from '../components/admin/ProblemSelectionSection';
 const USER_PAGE_SIZE = 20;
-const PROBLEM_EDIT_PAGE_SIZE = 10;
 
 const mapAdminUserToForm = (user: AdminUser): UpdateUserPayload => ({
   id: user.id,
@@ -182,25 +90,6 @@ const normalizeProblemKey = (problem: Pick<Problem, 'displayId' | 'id'>): string
   return '';
 };
 
-type ProblemFormState = {
-  displayId: string;
-  title: string;
-  description: string;
-  inputDescription: string;
-  outputDescription: string;
-  difficulty: 'Low' | 'Mid' | 'High';
-  timeLimit: string;
-  memoryLimit: string;
-  ruleType: 'ACM' | 'OI';
-  tags: string;
-  visible: boolean;
-  shareSubmission: boolean;
-  source: string;
-  hint: string;
-  ioInput: string;
-  ioOutput: string;
-};
-
 type ContestFormState = {
   title: string;
   description: string;
@@ -218,7 +107,6 @@ type WorkbookFormState = {
   description: string;
   category: string;
   isPublic: boolean;
-  problemIds: string[];
 };
 
 type AdminSection =
@@ -241,40 +129,6 @@ export const AdminPage: React.FC = () => {
     const flag = user?.admin_type;
     return flag === 'Admin' || flag === 'Super Admin';
   }, [user?.admin_type]);
-
-  const [problemForm, setProblemForm] = useState<ProblemFormState>({
-    displayId: '',
-    title: '',
-    description: '',
-    inputDescription: '',
-    outputDescription: '',
-    difficulty: 'Mid',
-    timeLimit: '1000',
-    memoryLimit: '256',
-    ruleType: 'ACM',
-    tags: '',
-    visible: true,
-    shareSubmission: false,
-    source: '',
-    hint: '',
-    ioInput: 'input.txt',
-    ioOutput: 'output.txt',
-  });
-
-  const [samples, setSamples] = useState<Array<{ input: string; output: string }>>([
-    { input: '', output: '' },
-  ]);
-
-  const [problemLanguages, setProblemLanguages] = useState<string[]>([...availableLanguages]);
-  const [testCaseFile, setTestCaseFile] = useState<File | null>(null);
-  const [testCaseId, setTestCaseId] = useState('');
-  const [isUploadingTestCases, setIsUploadingTestCases] = useState(false);
-  const [problemLoading, setProblemLoading] = useState(false);
-  const [problemMessage, setProblemMessage] = useState<{ success?: string; error?: string }>({});
-
-  const [bulkFile, setBulkFile] = useState<File | null>(null);
-  const [bulkLoading, setBulkLoading] = useState(false);
-  const [bulkMessage, setBulkMessage] = useState<{ success?: string; error?: string }>({});
 
   const [contestForm, setContestForm] = useState<ContestFormState>({
     title: '',
@@ -306,17 +160,17 @@ export const AdminPage: React.FC = () => {
     description: '',
     category: '',
     isPublic: false,
-    problemIds: [],
   });
   const [workbookLoading, setWorkbookLoading] = useState(false);
   const [workbookMessage, setWorkbookMessage] = useState<{ success?: string; error?: string }>({});
-  const [workbookProblemInput, setWorkbookProblemInput] = useState('');
-  const [problemSearchResults, setProblemSearchResults] = useState<Problem[]>([]);
-  const [isProblemSearchLoading, setIsProblemSearchLoading] = useState(false);
-  const [problemSearchError, setProblemSearchError] = useState<string | null>(null);
-  const [selectedProblemMeta, setSelectedProblemMeta] = useState<
-    Record<string, { displayId?: string; title?: string }>
-  >({});
+  const {
+    selectedProblems: selectedWorkbookProblems,
+    addProblem: addWorkbookProblem,
+    removeProblem: removeWorkbookProblem,
+    clear: clearWorkbookProblems,
+  } = useProblemSelection();
+  const [workbookSelectionMessage, setWorkbookSelectionMessage] = useState<{ success?: string; error?: string }>({});
+  const [workbookSelectionReset, setWorkbookSelectionReset] = useState(0);
 
   const [workbooks, setWorkbooks] = useState<Workbook[]>([]);
   const [isWorkbookListLoading, setIsWorkbookListLoading] = useState(false);
@@ -358,18 +212,6 @@ export const AdminPage: React.FC = () => {
   const [userFormLoading, setUserFormLoading] = useState(false);
   const [userDeleteLoading, setUserDeleteLoading] = useState(false);
 
-  const [judgeServers, setJudgeServers] = useState<JudgeServer[]>([]);
-  const [judgeServerToken, setJudgeServerToken] = useState('');
-  const [judgeServerLoading, setJudgeServerLoading] = useState(false);
-  const [judgeServerError, setJudgeServerError] = useState<string | null>(null);
-  const [backendStatus, setBackendStatus] = useState<ServiceHealthStatus>({
-    name: 'OJ Backend',
-    status: 'unknown',
-  });
-  const [microServiceStatus, setMicroServiceStatus] = useState<ServiceHealthStatus>({
-    name: 'Micro Service',
-    status: 'unknown',
-  });
   const [contestList, setContestList] = useState<AdminContest[]>([]);
   const [contestListLoading, setContestListLoading] = useState(false);
   const [contestListError, setContestListError] = useState<string | null>(null);
@@ -410,77 +252,7 @@ export const AdminPage: React.FC = () => {
   const [contestProblemActionLoading, setContestProblemActionLoading] = useState(false);
   const [deletingContestProblemId, setDeletingContestProblemId] = useState<number | null>(null);
 
-  const [problemEditList, setProblemEditList] = useState<Problem[]>([]);
-  const [problemEditLoading, setProblemEditLoading] = useState(false);
-  const [problemEditError, setProblemEditError] = useState<string | null>(null);
-  const [problemEditPage, setProblemEditPage] = useState(1);
-  const [problemEditTotal, setProblemEditTotal] = useState(0);
-  const [problemEditSearchKeyword, setProblemEditSearchKeyword] = useState('');
-  const problemEditSearchTimerRef = useRef<number | null>(null);
-  const problemEditSearchKeywordRef = useRef('');
-  const problemEditInitializedRef = useRef(false);
-  const [selectedProblemId, setSelectedProblemId] = useState<number | null>(null);
-  const [selectedProblemDetail, setSelectedProblemDetail] = useState<AdminProblemDetail | null>(null);
-  const [problemEditForm, setProblemEditForm] = useState<{
-    displayId: string;
-    title: string;
-    description: string;
-    inputDescription: string;
-    outputDescription: string;
-    hint: string;
-    source: string;
-    timeLimit: string;
-    memoryLimit: string;
-    tags: string;
-    difficulty: AdminProblemDetail['difficulty'];
-    visible: boolean;
-    shareSubmission: boolean;
-    ioInput: string;
-    ioOutput: string;
-    samples: Array<{ input: string; output: string }>;
-    languages: string[];
-  } | null>(null);
-  const [problemEditMessage, setProblemEditMessage] = useState<{ success?: string; error?: string }>({});
-  const [problemEditSaving, setProblemEditSaving] = useState(false);
-  const [problemEditDetailLoading, setProblemEditDetailLoading] = useState(false);
-
-  const [updatingJudgeServerId, setUpdatingJudgeServerId] = useState<number | null>(null);
-  const [deletingJudgeServerHostname, setDeletingJudgeServerHostname] = useState<string | null>(null);
-
   const [activeSection, setActiveSection] = useState<AdminSection>('problem');
-
-  const fetchJudgeServers = useCallback(async () => {
-    setJudgeServerError(null);
-    setJudgeServerLoading(true);
-    const started = performance.now();
-    try {
-      const { token, servers } = await adminService.getJudgeServers();
-      const latency = performance.now() - started;
-      setJudgeServerToken(token ?? '');
-      setJudgeServers(Array.isArray(servers) ? servers : []);
-      setBackendStatus({
-        name: 'OJ Backend',
-        status: 'online',
-        lastChecked: new Date().toISOString(),
-        latency,
-      });
-    } catch (error) {
-      const latency = performance.now() - started;
-      const message = error instanceof Error ? error.message : '채점 서버 목록을 불러오지 못했습니다.';
-      setJudgeServerError(message);
-      setJudgeServers([]);
-      setJudgeServerToken('');
-      setBackendStatus({
-        name: 'OJ Backend',
-        status: 'offline',
-        message,
-        lastChecked: new Date().toISOString(),
-        latency,
-      });
-    } finally {
-      setJudgeServerLoading(false);
-    }
-  }, []);
 
   const fetchContestProblems = useCallback(async (contestId: number) => {
     if (!contestId) {
@@ -809,300 +581,6 @@ export const AdminPage: React.FC = () => {
     setContestFormProblems((prev) => prev.filter((item) => item.problem.id !== problemId));
   };
 
-  const fetchProblemEditList = useCallback(
-    async (page: number = 1, keyword?: string) => {
-      const normalizedKeyword = typeof keyword === 'string' ? keyword : problemEditSearchKeywordRef.current;
-      const offset = (page - 1) * PROBLEM_EDIT_PAGE_SIZE;
-      setProblemEditLoading(true);
-      setProblemEditError(null);
-      try {
-        const { results, total } = await adminService.getAdminProblemList({
-          keyword: normalizedKeyword,
-          limit: PROBLEM_EDIT_PAGE_SIZE,
-          offset,
-        });
-        setProblemEditList(results);
-        setProblemEditTotal(total);
-        setProblemEditPage(page);
-        setProblemEditSearchKeyword(normalizedKeyword ?? '');
-        problemEditSearchKeywordRef.current = normalizedKeyword ?? '';
-
-        if (results.length === 0) {
-          setSelectedProblemId(null);
-          setSelectedProblemDetail(null);
-          setProblemEditForm(null);
-        } else {
-          const currentId = selectedProblemId;
-          const next = results.find((item) => item.id === currentId) ?? results[0];
-          if (!currentId || next.id !== currentId) {
-            setSelectedProblemId(next.id);
-          }
-        }
-      } catch (error) {
-        const message = error instanceof Error ? error.message : '문제 목록을 불러오지 못했습니다.';
-        setProblemEditError(message);
-        setProblemEditList([]);
-        setProblemEditTotal(0);
-        setSelectedProblemId(null);
-        setSelectedProblemDetail(null);
-        setProblemEditForm(null);
-      } finally {
-        setProblemEditLoading(false);
-      }
-    },
-    [selectedProblemId],
-  );
-
-  const handleProblemEditSearchChange = (value: string) => {
-    setProblemEditSearchKeyword(value);
-    problemEditSearchKeywordRef.current = value;
-    if (problemEditSearchTimerRef.current) {
-      window.clearTimeout(problemEditSearchTimerRef.current);
-    }
-    problemEditSearchTimerRef.current = window.setTimeout(() => {
-      fetchProblemEditList(1, value);
-    }, 300);
-  };
-
-  const handleProblemEditSearchSubmit = () => {
-    if (problemEditSearchTimerRef.current) {
-      window.clearTimeout(problemEditSearchTimerRef.current);
-      problemEditSearchTimerRef.current = null;
-    }
-    fetchProblemEditList(1, problemEditSearchKeywordRef.current);
-  };
-
-  const loadProblemEditDetail = useCallback(
-    async (problemId: number) => {
-      if (!problemId) {
-        setSelectedProblemDetail(null);
-        setProblemEditForm(null);
-        return;
-      }
-
-      setProblemEditDetailLoading(true);
-      setProblemEditMessage({});
-      try {
-        const detail = await adminService.getAdminProblemDetail(problemId);
-        const resolvedLanguages = normalizeLanguageList(detail.languages);
-        const sanitizedDetail: AdminProblemDetail = {
-          ...detail,
-          languages: resolvedLanguages.length > 0 ? resolvedLanguages : [...availableLanguages],
-        };
-        setSelectedProblemDetail(sanitizedDetail);
-        setProblemEditForm({
-          displayId: detail.displayId ?? '',
-          title: detail.title ?? '',
-          description: detail.description ?? '',
-          inputDescription: detail.inputDescription ?? '',
-          outputDescription: detail.outputDescription ?? '',
-          hint: detail.hint ?? '',
-          source: detail.source ?? '',
-          timeLimit: String(detail.timeLimit ?? ''),
-          memoryLimit: String(detail.memoryLimit ?? ''),
-          tags: detail.tags.join(', '),
-          difficulty: detail.difficulty,
-          visible: detail.visible,
-          shareSubmission: detail.shareSubmission,
-          ioInput: detail.ioMode.input,
-          ioOutput: detail.ioMode.output,
-          samples: detail.samples.length > 0 ? detail.samples : [{ input: '', output: '' }],
-          languages: sanitizedDetail.languages,
-        });
-      } catch (error) {
-        const message = error instanceof Error ? error.message : '문제 정보를 불러오지 못했습니다.';
-        setProblemEditMessage({ error: message });
-        setSelectedProblemDetail(null);
-        setProblemEditForm(null);
-      } finally {
-        setProblemEditDetailLoading(false);
-      }
-    },
-    [],
-  );
-
-  const updateProblemEditForm = (updater: (prev: NonNullable<typeof problemEditForm>) => NonNullable<typeof problemEditForm>) => {
-    setProblemEditForm((prev) => {
-      if (!prev) {
-        return prev;
-      }
-      const next = updater(prev);
-      setProblemEditMessage({});
-      return next;
-    });
-  };
-
-  const handleProblemEditFieldChange = <K extends keyof NonNullable<typeof problemEditForm>>(field: K, value: NonNullable<typeof problemEditForm>[K]) => {
-    updateProblemEditForm((prev) => ({ ...prev, [field]: value }));
-  };
-
-  const handleProblemEditSampleChange = (index: number, field: 'input' | 'output', value: string) => {
-    updateProblemEditForm((prev) => {
-      const nextSamples = prev.samples.map((sample, idx) => (idx === index ? { ...sample, [field]: value } : sample));
-      return { ...prev, samples: nextSamples };
-    });
-  };
-
-  const handleAddProblemEditSample = () => {
-    updateProblemEditForm((prev) => ({ ...prev, samples: [...prev.samples, { input: '', output: '' }] }));
-  };
-
-  const handleRemoveProblemEditSample = (index: number) => {
-    updateProblemEditForm((prev) => {
-      if (prev.samples.length <= 1) {
-        return prev;
-      }
-      const nextSamples = prev.samples.filter((_, idx) => idx !== index);
-      return { ...prev, samples: nextSamples.length > 0 ? nextSamples : [{ input: '', output: '' }] };
-    });
-  };
-
-  const handleProblemEditLanguageToggle = (language: string, checked: boolean) => {
-    const normalized = normalizeLanguageKey(language);
-    if (!normalized) {
-      return;
-    }
-    updateProblemEditForm((prev) => {
-      const current = new Set(
-        prev.languages
-          .map((lang) => normalizeLanguageKey(lang))
-          .filter((lang): lang is string => Boolean(lang)),
-      );
-      if (checked) {
-        current.add(normalized);
-      } else {
-        current.delete(normalized);
-      }
-      const ordered = availableLanguages.filter((lang) => current.has(lang));
-      return { ...prev, languages: ordered };
-    });
-  };
-
-  const handleProblemEditSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (!problemEditForm || !selectedProblemDetail) {
-      return;
-    }
-
-    const parsedTimeLimit = Number(problemEditForm.timeLimit);
-    const parsedMemoryLimit = Number(problemEditForm.memoryLimit);
-    const timeLimit = Number.isFinite(parsedTimeLimit) && parsedTimeLimit > 0 ? parsedTimeLimit : selectedProblemDetail.timeLimit;
-    const memoryLimit = Number.isFinite(parsedMemoryLimit) && parsedMemoryLimit > 0 ? parsedMemoryLimit : selectedProblemDetail.memoryLimit;
-
-    const normalizedSamples = problemEditForm.samples
-      .map((sample) => ({ input: sample.input ?? '', output: sample.output ?? '' }))
-      .filter((sample) => sample.input.trim().length > 0 || sample.output.trim().length > 0);
-
-    const effectiveSamples = normalizedSamples.length > 0 ? normalizedSamples : selectedProblemDetail.samples;
-
-    const tags = problemEditForm.tags
-      .split(',')
-      .map((tag) => tag.trim())
-      .filter((tag) => tag.length > 0);
-
-    const normalizedFormLanguages = normalizeLanguageList(problemEditForm.languages);
-    const fallbackLanguages = normalizeLanguageList(selectedProblemDetail.languages);
-    const resolvedLanguages =
-      normalizedFormLanguages.length > 0
-        ? normalizedFormLanguages
-        : fallbackLanguages.length > 0
-          ? fallbackLanguages
-          : [...availableLanguages];
-    const backendLanguages = toBackendLanguageList(resolvedLanguages);
-
-    const payload: UpdateProblemPayload = {
-      id: selectedProblemDetail.id,
-      _id: problemEditForm.displayId.trim(),
-      title: problemEditForm.title.trim(),
-      description: problemEditForm.description,
-      input_description: problemEditForm.inputDescription,
-      output_description: problemEditForm.outputDescription,
-      samples: effectiveSamples,
-      test_case_id: selectedProblemDetail.testCaseId,
-      test_case_score: selectedProblemDetail.testCaseScore,
-      time_limit: timeLimit,
-      memory_limit: memoryLimit,
-      languages: backendLanguages,
-      template: selectedProblemDetail.template,
-      rule_type: selectedProblemDetail.ruleType,
-      io_mode: {
-        io_mode: selectedProblemDetail.ioMode.io_mode,
-        input: problemEditForm.ioInput,
-        output: problemEditForm.ioOutput,
-      },
-      spj: selectedProblemDetail.spj,
-      spj_language: selectedProblemDetail.spjLanguage,
-      spj_code: selectedProblemDetail.spjCode,
-      spj_compile_ok: selectedProblemDetail.spjCompileOk,
-      visible: problemEditForm.visible,
-      difficulty: problemEditForm.difficulty,
-      tags: tags.length > 0 ? tags : selectedProblemDetail.tags,
-      hint: problemEditForm.hint,
-      source: problemEditForm.source,
-      share_submission: problemEditForm.shareSubmission,
-    };
-
-    if (!payload.title) {
-      setProblemEditMessage({ error: '문제 제목을 입력하세요.' });
-      return;
-    }
-
-    if (!payload._id) {
-      setProblemEditMessage({ error: '표시 ID를 입력하세요.' });
-      return;
-    }
-
-    setProblemEditSaving(true);
-    setProblemEditMessage({});
-    try {
-      const updated = await adminService.updateAdminProblem(payload);
-      const normalizedUpdatedLanguages = normalizeLanguageList(updated.languages);
-      const sanitizedUpdated: AdminProblemDetail = {
-        ...updated,
-        languages: normalizedUpdatedLanguages.length > 0 ? normalizedUpdatedLanguages : [...availableLanguages],
-      };
-      setSelectedProblemDetail(sanitizedUpdated);
-      setProblemEditForm({
-        displayId: updated.displayId ?? '',
-        title: updated.title ?? '',
-        description: updated.description ?? '',
-        inputDescription: updated.inputDescription ?? '',
-        outputDescription: updated.outputDescription ?? '',
-        hint: updated.hint ?? '',
-        source: updated.source ?? '',
-        timeLimit: String(updated.timeLimit ?? ''),
-        memoryLimit: String(updated.memoryLimit ?? ''),
-        tags: updated.tags.join(', '),
-        difficulty: updated.difficulty,
-        visible: updated.visible,
-        shareSubmission: updated.shareSubmission,
-        ioInput: updated.ioMode.input,
-        ioOutput: updated.ioMode.output,
-        samples: updated.samples.length > 0 ? updated.samples : [{ input: '', output: '' }],
-        languages: sanitizedUpdated.languages,
-      });
-      setProblemEditMessage({ success: '문제 정보를 수정했습니다.' });
-      setProblemEditList((prev) =>
-        prev.map((item) =>
-          item.id === updated.id
-            ? {
-                ...item,
-                title: updated.title,
-                displayId: updated.displayId,
-                difficulty: updated.difficulty,
-                visible: updated.visible,
-              }
-            : item,
-        ),
-      );
-    } catch (error) {
-      const message = error instanceof Error ? error.message : '문제 정보를 수정하지 못했습니다.';
-      setProblemEditMessage({ error: message });
-    } finally {
-      setProblemEditSaving(false);
-    }
-  };
-
   const tryAddContestProblem = async () => {
     if (!selectedContest) {
       setContestProblemMessage({ error: '먼저 대회를 선택하세요.' });
@@ -1222,17 +700,6 @@ export const AdminPage: React.FC = () => {
     }
   };
 
-  const refreshMicroServiceHealth = useCallback(async () => {
-    const result = await adminService.checkMicroserviceHealth();
-    setMicroServiceStatus({
-      name: 'Micro Service',
-      status: result.ok ? 'online' : 'offline',
-      latency: result.latency,
-      message: result.ok ? undefined : result.message,
-      lastChecked: new Date().toISOString(),
-    });
-  }, []);
-
   const fetchUsers = useCallback(
     async (page: number = 1, keyword?: string) => {
       const normalizedKeyword = typeof keyword === 'string' ? keyword : userSearchKeywordRef.current;
@@ -1303,13 +770,6 @@ export const AdminPage: React.FC = () => {
   }, [activeSection, loadWorkbooks]);
 
   useEffect(() => {
-    if (activeSection === 'problem-edit' && !problemEditInitializedRef.current) {
-      problemEditInitializedRef.current = true;
-      fetchProblemEditList(1, problemEditSearchKeywordRef.current);
-    }
-  }, [activeSection, fetchProblemEditList]);
-
-  useEffect(() => {
     const timersRef = workbookProblemSearchTimers;
     return () => {
       Object.values(timersRef.current).forEach((timerId) => {
@@ -1325,9 +785,6 @@ export const AdminPage: React.FC = () => {
       }
       if (contestFormProblemSearchTimerRef.current) {
         window.clearTimeout(contestFormProblemSearchTimerRef.current);
-      }
-      if (problemEditSearchTimerRef.current) {
-        window.clearTimeout(problemEditSearchTimerRef.current);
       }
     };
   }, []);
@@ -1364,25 +821,6 @@ export const AdminPage: React.FC = () => {
       fetchUsers(1, userSearchKeywordRef.current);
     }
   }, [activeSection, fetchUsers]);
-
-  useEffect(() => {
-    if (activeSection !== 'problem-edit') {
-      return;
-    }
-    if (!selectedProblemId) {
-      setSelectedProblemDetail(null);
-      setProblemEditForm(null);
-      return;
-    }
-    loadProblemEditDetail(selectedProblemId);
-  }, [activeSection, selectedProblemId, loadProblemEditDetail]);
-
-  useEffect(() => {
-    if (activeSection === 'server') {
-      fetchJudgeServers();
-      refreshMicroServiceHealth();
-    }
-  }, [activeSection, fetchJudgeServers, refreshMicroServiceHealth]);
 
   useEffect(() => {
     if (activeSection === 'contest-edit') {
@@ -1478,51 +916,6 @@ export const AdminPage: React.FC = () => {
     }
   };
 
-  useEffect(() => {
-    const trimmed = workbookProblemInput.trim();
-
-    if (!trimmed) {
-      setProblemSearchResults([]);
-      setProblemSearchError(null);
-      setIsProblemSearchLoading(false);
-      return;
-    }
-
-    let cancelled = false;
-    setIsProblemSearchLoading(true);
-    setProblemSearchError(null);
-
-    const handler = setTimeout(() => {
-      problemService
-        .searchProblems(trimmed, { limit: 20 })
-        .then((response) => {
-          if (cancelled) return;
-          const items = Array.isArray(response.data) ? response.data : [];
-          const filtered = items.filter(
-            (problem) => !workbookForm.problemIds.includes(String(problem.id)),
-          );
-          setProblemSearchResults(filtered.slice(0, 10));
-        })
-        .catch((error) => {
-          if (cancelled) return;
-          const message =
-            error instanceof Error ? error.message : '문제 검색 중 오류가 발생했습니다.';
-          setProblemSearchError(message);
-          setProblemSearchResults([]);
-        })
-        .finally(() => {
-          if (!cancelled) {
-            setIsProblemSearchLoading(false);
-          }
-        });
-    }, 300);
-
-    return () => {
-      cancelled = true;
-      clearTimeout(handler);
-    };
-  }, [workbookProblemInput, workbookForm.problemIds]);
-
   const formatDate = (value?: string) => {
     if (!value) {
       return '-';
@@ -1538,7 +931,7 @@ export const AdminPage: React.FC = () => {
     { key: 'server', label: '서버 관리', helper: '채점 서버와 서비스 상태 모니터링' },
     { key: 'organization', label: '조직 관리', helper: '조직 목록과 구성원 관리 도구' },
     { key: 'problem', label: '문제 등록', helper: '단일 문제 생성 및 메타데이터 관리' },
-    { key: 'bulk', label: '문제 대량 등록', helper: 'JSON ZIP 업로드로 여러 문제 처리' },
+    { key: 'bulk', label: '문제 일괄 관리', helper: 'OJ 백엔드 기반 대량 등록 및 내보내기' },
     { key: 'problem-edit', label: '문제 수정', helper: '기존 문제 조회 및 정보 수정' },
     { key: 'workbook', label: '문제집 등록', helper: '문제집 메타데이터 등록' },
     { key: 'workbook-manage', label: '문제집 수정', helper: '문제집 목록 확인 및 문제 관리' },
@@ -1764,67 +1157,6 @@ export const AdminPage: React.FC = () => {
       userSearchTimerRef.current = null;
     }
     fetchUsers(1, userSearchKeywordRef.current);
-  };
-
-  const handleRefreshServers = async () => {
-    await Promise.all([fetchJudgeServers(), refreshMicroServiceHealth()]);
-  };
-
-  const handleToggleJudgeServerDisabled = async (server: JudgeServer, nextValue: boolean) => {
-    setUpdatingJudgeServerId(server.id);
-    try {
-      await adminService.updateJudgeServer({ id: server.id, is_disabled: nextValue });
-      setJudgeServers((prev) =>
-        prev.map((item) => (item.id === server.id ? { ...item, is_disabled: nextValue } : item)),
-      );
-    } catch (error) {
-      const message = error instanceof Error ? error.message : '채점 서버 상태를 변경하지 못했습니다.';
-      setJudgeServerError(message);
-      await fetchJudgeServers();
-    } finally {
-      setUpdatingJudgeServerId(null);
-    }
-  };
-
-  const handleDeleteJudgeServer = async (hostname: string) => {
-    if (!hostname) {
-      return;
-    }
-    const confirmed = window.confirm(`${hostname} 서버를 삭제하시겠습니까? 다음 하트비트까지 사용할 수 없습니다.`);
-    if (!confirmed) {
-      return;
-    }
-    setDeletingJudgeServerHostname(hostname);
-    try {
-      await adminService.deleteJudgeServer(hostname);
-      await fetchJudgeServers();
-    } catch (error) {
-      const message = error instanceof Error ? error.message : '채점 서버를 삭제하지 못했습니다.';
-      setJudgeServerError(message);
-    } finally {
-      setDeletingJudgeServerHostname(null);
-    }
-  };
-
-  const formatLatency = (value?: number) => {
-    if (typeof value !== 'number' || Number.isNaN(value)) {
-      return '-';
-    }
-    if (value >= 1000) {
-      return `${(value / 1000).toFixed(2)} s`;
-    }
-    return `${Math.round(value)} ms`;
-  };
-
-  const getStatusPillClass = (status: ServiceHealthStatus['status']) => {
-    switch (status) {
-      case 'online':
-        return 'border-green-200 bg-green-50 text-green-700';
-      case 'offline':
-        return 'border-red-200 bg-red-50 text-red-700';
-      default:
-        return 'border-gray-200 bg-gray-50 text-gray-600';
-    }
   };
 
   const handleContestSearchInputChange = (value: string) => {
@@ -2243,190 +1575,6 @@ export const AdminPage: React.FC = () => {
     }
   };
 
-  const handleSampleChange = (index: number, field: 'input' | 'output', value: string) => {
-    setSamples((prev) => {
-      const next = [...prev];
-      next[index] = { ...next[index], [field]: value };
-      return next;
-    });
-  };
-
-  const handleAddSample = () => {
-    setSamples((prev) => [...prev, { input: '', output: '' }]);
-  };
-
-  const handleRemoveSample = (index: number) => {
-    setSamples((prev) => prev.filter((_, idx) => idx !== index));
-  };
-
-  const toggleLanguage = (language: string) => {
-    const normalized = normalizeLanguageKey(language);
-    if (!normalized) {
-      return;
-    }
-    setProblemLanguages((prev) => {
-      const current = new Set(prev);
-      if (current.has(normalized)) {
-        current.delete(normalized);
-      } else {
-        current.add(normalized);
-      }
-      const ordered = availableLanguages.filter((lang) => current.has(lang));
-      return ordered;
-    });
-  };
-
-  const handleUploadTestCases = async () => {
-    if (!testCaseFile) {
-      setProblemMessage({ error: '업로드할 테스트케이스 ZIP 파일을 선택하세요.' });
-      return;
-    }
-    try {
-      setIsUploadingTestCases(true);
-      setProblemMessage({});
-      const result = await adminService.uploadProblemTestCases(testCaseFile, false);
-      setTestCaseId(result.id);
-      setProblemMessage({ success: `테스트케이스 업로드 완료 (ID: ${result.id})` });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : '테스트케이스 업로드 중 오류가 발생했습니다.';
-      setProblemMessage({ error: message });
-    } finally {
-      setIsUploadingTestCases(false);
-    }
-  };
-
-  const handleProblemSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    setProblemMessage({});
-
-    if (!problemForm.displayId.trim()) {
-      setProblemMessage({ error: '표시 ID를 입력하세요.' });
-      return;
-    }
-
-    if (!testCaseId) {
-      setProblemMessage({ error: '먼저 테스트케이스를 업로드해 ID를 확보하세요.' });
-      return;
-    }
-
-    const cleanedSamples = samples
-      .map((sample) => ({ input: sample.input.trim(), output: sample.output.trim() }))
-      .filter((sample) => sample.input || sample.output);
-
-    if (cleanedSamples.length === 0) {
-      setProblemMessage({ error: '최소 한 개 이상의 예제를 입력하세요.' });
-      return;
-    }
-
-    const tagList = problemForm.tags
-      .split(',')
-      .map((tag) => tag.trim())
-      .filter((tag) => tag.length > 0);
-
-    if (tagList.length === 0) {
-      setProblemMessage({ error: '태그를 최소 한 개 이상 입력하세요.' });
-      return;
-    }
-
-    if (problemLanguages.length === 0) {
-      setProblemMessage({ error: '최소 한 개 이상의 언어를 선택하세요.' });
-      return;
-    }
-
-    const backendLanguages = toBackendLanguageList(problemLanguages);
-
-    const payload: CreateProblemPayload = {
-      _id: problemForm.displayId.trim(),
-      title: problemForm.title.trim(),
-      description: problemForm.description,
-      input_description: problemForm.inputDescription,
-      output_description: problemForm.outputDescription,
-      samples: cleanedSamples,
-      test_case_id: testCaseId,
-      test_case_score: [] as Array<{ input_name: string; output_name: string; score: number }>,
-      time_limit: Number(problemForm.timeLimit) || 1000,
-      memory_limit: Number(problemForm.memoryLimit) || 256,
-      languages: backendLanguages,
-      template: problemLanguages.reduce<Record<string, string>>((acc, lang) => {
-        const backendKey = getLanguageBackendValue(lang);
-        acc[backendKey] = templateMap[lang] || '';
-        return acc;
-      }, {}),
-      rule_type: problemForm.ruleType,
-      io_mode: {
-        io_mode: 'Standard IO',
-        input: problemForm.ioInput.trim() || 'input.txt',
-        output: problemForm.ioOutput.trim() || 'output.txt',
-      },
-      spj: false,
-      spj_language: null,
-      spj_code: null,
-      spj_compile_ok: false,
-      visible: problemForm.visible,
-      difficulty: problemForm.difficulty,
-      tags: tagList,
-      hint: problemForm.hint.trim() || null,
-      source: problemForm.source.trim() || null,
-      share_submission: problemForm.shareSubmission,
-    };
-
-    try {
-      setProblemLoading(true);
-      await adminService.createProblem(payload);
-      setProblemMessage({ success: '문제가 성공적으로 등록되었습니다.' });
-      setProblemForm({
-        displayId: '',
-        title: '',
-        description: '',
-        inputDescription: '',
-        outputDescription: '',
-        difficulty: 'Mid',
-        timeLimit: '1000',
-        memoryLimit: '256',
-        ruleType: 'ACM',
-        tags: '',
-        visible: true,
-        shareSubmission: false,
-        source: '',
-        hint: '',
-        ioInput: 'input.txt',
-        ioOutput: 'output.txt',
-      });
-      setSamples([{ input: '', output: '' }]);
-      setProblemLanguages([...availableLanguages]);
-      setTestCaseFile(null);
-      setTestCaseId('');
-    } catch (error) {
-      const message = error instanceof Error ? error.message : '문제 등록 중 오류가 발생했습니다.';
-      setProblemMessage({ error: message });
-    } finally {
-      setProblemLoading(false);
-    }
-  };
-
-  const handleBulkSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    setBulkMessage({});
-
-    if (!bulkFile) {
-      setBulkMessage({ error: '업로드할 ZIP 파일을 선택하세요.' });
-      return;
-    }
-
-    try {
-      setBulkLoading(true);
-      const result = await adminService.bulkImportProblems(bulkFile);
-      const count = Array.isArray(result) ? result.length : 0;
-      setBulkMessage({ success: `총 ${count}개의 문제를 처리했습니다.` });
-      setBulkFile(null);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : '문제 대량 등록 중 오류가 발생했습니다.';
-      setBulkMessage({ error: message });
-    } finally {
-      setBulkLoading(false);
-    }
-  };
-
   const handleContestSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setContestMessage({});
@@ -2515,122 +1663,40 @@ export const AdminPage: React.FC = () => {
     }
   };
 
-  const addProblemToSelection = (problem: Problem): boolean => {
-    if (!Number.isInteger(problem?.id) || problem.id <= 0) {
-      setWorkbookMessage({ error: '유효한 문제를 선택하세요.' });
-      return false;
+  const handleAddWorkbookProblem = (problem: Problem): AddProblemResult => {
+    const result = addWorkbookProblem(problem);
+    if (!result.success) {
+      setWorkbookSelectionMessage({ error: result.error });
+      return result;
     }
-
-    const normalized = String(problem.id);
-    if (workbookForm.problemIds.includes(normalized)) {
-      setWorkbookMessage({
-        error: `${problem.displayId ?? normalized} 문제는 이미 추가되어 있습니다.`,
-      });
-      return false;
-    }
-
-    setWorkbookForm((prev) => ({
-      ...prev,
-      problemIds: [...prev.problemIds, normalized],
-    }));
-    setSelectedProblemMeta((prev) => ({
-      ...prev,
-      [normalized]: { displayId: problem.displayId ?? undefined, title: problem.title },
-    }));
+    setWorkbookSelectionMessage({});
     setWorkbookMessage({});
-    setProblemSearchResults((prev) => prev.filter((item) => item.id !== problem.id));
-    return true;
-  };
-
-  const handleCreateWorkbookProblemInputChange = (value: string) => {
-    setWorkbookProblemInput(value);
-    setWorkbookMessage({});
-  };
-
-  const handleAddWorkbookProblemId = () => {
-    const trimmed = workbookProblemInput.trim();
-    if (!trimmed) {
-      return;
-    }
-
-    if (isProblemSearchLoading) {
-      return;
-    }
-
-    const match = problemSearchResults.find((problem) => {
-      const matchesId = String(problem.id) === trimmed;
-      const matchesDisplay = problem.displayId
-        ? problem.displayId.toLowerCase() === trimmed.toLowerCase()
-        : false;
-      return matchesId || matchesDisplay;
-    });
-
-    if (!match) {
-      setWorkbookMessage({ error: '검색 결과에서 문제를 선택해주세요.' });
-      return;
-    }
-
-    if (addProblemToSelection(match)) {
-      setWorkbookProblemInput('');
-    }
-  };
-
-  const handleSelectCreationProblemSuggestion = (problem: Problem) => {
-    if (addProblemToSelection(problem)) {
-      setWorkbookProblemInput('');
-    }
+    return result;
   };
 
   const handleSelectWorkbookProblemSuggestion = async (workbookId: number, problem: Problem) => {
     await appendProblemToWorkbook(workbookId, problem);
   };
 
-  const handleRemoveWorkbookProblemId = (target: string) => {
-    setWorkbookForm((prev) => ({
-      ...prev,
-      problemIds: prev.problemIds.filter((id) => id !== target),
-    }));
-    setSelectedProblemMeta((prev) => {
-      if (!prev[target]) {
-        return prev;
-      }
-      const next = { ...prev };
-      delete next[target];
-      return next;
-    });
-  };
-
-  const handleCreateWorkbookProblemInputKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
-    if (event.key === 'Enter') {
-      event.preventDefault();
-      handleAddWorkbookProblemId();
-    }
+  const handleRemoveWorkbookProblem = (problemId: number) => {
+    removeWorkbookProblem(problemId);
+    setWorkbookSelectionMessage({});
+    setWorkbookMessage({});
   };
 
   const handleWorkbookSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setWorkbookMessage({});
 
-    if (!workbookForm.title.trim()) {
+  if (!workbookForm.title.trim()) {
       setWorkbookMessage({ error: '문제집 제목을 입력하세요.' });
       return;
     }
 
-    const trimmedProblemIds = workbookForm.problemIds
-      .map((value) => value.trim())
-      .filter((value) => value.length > 0);
-
-    const parsedProblemIds: number[] = [];
-    for (const value of trimmedProblemIds) {
-      const parsed = Number(value);
-      if (!Number.isInteger(parsed) || parsed <= 0) {
-        setWorkbookMessage({ error: '문제 ID는 양의 정수로 입력하세요.' });
-        return;
-      }
-      parsedProblemIds.push(parsed);
-    }
-
-    const uniqueProblemIds = Array.from(new Set(parsedProblemIds));
+    const selectedProblemIds = selectedWorkbookProblems
+      .map((problem) => Number(problem.id))
+      .filter((id) => Number.isInteger(id) && id > 0);
+    const uniqueProblemIds = Array.from(new Set(selectedProblemIds));
 
     const payload: CreateWorkbookPayload = {
       title: workbookForm.title.trim(),
@@ -2652,13 +1718,10 @@ export const AdminPage: React.FC = () => {
         description: '',
         category: '',
         isPublic: false,
-        problemIds: [],
       });
-      setWorkbookProblemInput('');
-      setProblemSearchResults([]);
-      setProblemSearchError(null);
-      setIsProblemSearchLoading(false);
-      setSelectedProblemMeta({});
+      clearWorkbookProblems();
+      setWorkbookSelectionMessage({});
+      setWorkbookSelectionReset((prev) => prev + 1);
     } catch (error) {
       const message = error instanceof Error ? error.message : '문제집 등록 중 오류가 발생했습니다.';
       setWorkbookMessage({ error: message });
@@ -2701,155 +1764,8 @@ export const AdminPage: React.FC = () => {
     switch (activeSection) {
       case 'organization':
         return <OrganizationAdminSection />;
-      case 'server': {
-        const activeJudgeServers = judgeServers.filter((item) => item.status === 'normal' && !item.is_disabled).length;
-        const totalJudgeServers = judgeServers.length;
-        const judgeServersStatus: ServiceHealthStatus = {
-          name: 'Judge Servers',
-          status:
-            totalJudgeServers > 0
-              ? 'online'
-              : backendStatus.status === 'offline'
-                ? 'offline'
-                : 'unknown',
-          message:
-            totalJudgeServers > 0
-              ? `${activeJudgeServers}/${totalJudgeServers} 활성`
-              : '등록된 서버가 없습니다.',
-          lastChecked: judgeServers[0]?.last_heartbeat,
-        };
-        const serviceCards = [backendStatus, microServiceStatus, judgeServersStatus];
-
-        return (
-          <Card padding="lg">
-            <div className="space-y-6">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div className="space-y-1">
-                  <h2 className="text-xl font-semibold text-gray-900">서버 관리</h2>
-                  <p className="text-sm text-gray-500">채점 서버와 마이크로 서비스 상태를 확인하고 관리할 수 있습니다.</p>
-                </div>
-                <Button variant="outline" onClick={handleRefreshServers} loading={judgeServerLoading}>
-                  새로고침
-                </Button>
-              </div>
-
-              <div className="grid gap-4 md:grid-cols-3">
-                {serviceCards.map((item) => (
-                  <div
-                    key={item.name}
-                    className={`rounded-lg border px-4 py-3 shadow-sm ${getStatusPillClass(item.status)}`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-semibold">{item.name}</span>
-                      <span className="text-xs text-gray-500">{item.lastChecked ? new Date(item.lastChecked).toLocaleTimeString() : ''}</span>
-                    </div>
-                    <div className="mt-2 flex items-baseline justify-between">
-                      <span className="text-base font-medium">
-                        {item.status === 'online' ? 'ON' : item.status === 'offline' ? 'OFF' : 'UNKNOWN'}
-                      </span>
-                      <span className="text-xs text-gray-600">{formatLatency(item.latency)}</span>
-                    </div>
-                    {item.message && <p className="mt-2 text-xs text-gray-600">{item.message}</p>}
-                  </div>
-                ))}
-              </div>
-
-              <section className="space-y-3">
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-900">Judge Server 토큰</h3>
-                  <div className="mt-2 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 font-mono text-sm text-gray-700">
-                    {judgeServerToken || '토큰 정보가 없습니다.'}
-                  </div>
-                </div>
-
-                <div className="overflow-hidden rounded-lg border border-gray-200">
-                  <table className="min-w-full divide-y divide-gray-200 text-left">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="px-4 py-3 text-xs font-medium uppercase tracking-wider text-gray-500">상태</th>
-                        <th className="px-4 py-3 text-xs font-medium uppercase tracking-wider text-gray-500">호스트명</th>
-                        <th className="px-4 py-3 text-xs font-medium uppercase tracking-wider text-gray-500">작업</th>
-                        <th className="px-4 py-3 text-xs font-medium uppercase tracking-wider text-gray-500">CPU</th>
-                        <th className="px-4 py-3 text-xs font-medium uppercase tracking-wider text-gray-500">메모리</th>
-                        <th className="px-4 py-3 text-xs font-medium uppercase tracking-wider text-gray-500">IP</th>
-                        <th className="px-4 py-3 text-xs font-medium uppercase tracking-wider text-gray-500">비활성화</th>
-                        <th className="px-4 py-3 text-xs font-medium uppercase tracking-wider text-gray-500">관리</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100 bg-white">
-                      {judgeServerLoading ? (
-                        <tr>
-                          <td colSpan={8} className="px-4 py-6 text-center text-sm text-gray-500">
-                            채점 서버 정보를 불러오는 중입니다...
-                          </td>
-                        </tr>
-                      ) : judgeServerError ? (
-                        <tr>
-                          <td colSpan={8} className="px-4 py-6 text-center text-sm text-red-600">{judgeServerError}</td>
-                        </tr>
-                      ) : judgeServers.length === 0 ? (
-                        <tr>
-                          <td colSpan={8} className="px-4 py-6 text-center text-sm text-gray-500">
-                            등록된 채점 서버가 없습니다.
-                          </td>
-                        </tr>
-                      ) : (
-                        judgeServers.map((server) => {
-                          const online = server.status === 'normal' && !server.is_disabled;
-                          return (
-                            <tr key={server.id} className="transition-colors hover:bg-gray-50">
-                              <td className="px-4 py-3 text-sm">
-                                <span
-                                  className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
-                                    online ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-700'
-                                  }`}
-                                >
-                                  {online ? '정상' : '오프라인'}
-                                </span>
-                              </td>
-                              <td className="px-4 py-3 text-sm text-gray-700">
-                                <div className="font-medium text-gray-900">{server.hostname}</div>
-                                <div className="text-xs text-gray-500">버전 {server.judger_version ?? '-'}</div>
-                              </td>
-                              <td className="px-4 py-3 text-sm text-gray-700">{server.task_number}</td>
-                              <td className="px-4 py-3 text-sm text-gray-700">{server.cpu_usage}% / {server.cpu_core}</td>
-                              <td className="px-4 py-3 text-sm text-gray-700">{server.memory_usage}%</td>
-                              <td className="px-4 py-3 text-sm text-gray-700">{server.ip ?? '-'}</td>
-                              <td className="px-4 py-3 text-sm text-gray-700">
-                                <label className="inline-flex items-center gap-2 text-sm text-gray-700">
-                                  <input
-                                    type="checkbox"
-                                    className="h-4 w-4"
-                                    checked={server.is_disabled}
-                                    onChange={(event) => handleToggleJudgeServerDisabled(server, event.target.checked)}
-                                    disabled={updatingJudgeServerId === server.id}
-                                  />
-                                  <span>{server.is_disabled ? '비활성' : '활성'}</span>
-                                </label>
-                              </td>
-                              <td className="px-4 py-3 text-sm text-gray-700">
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  className="text-red-600 hover:bg-red-50 hover:text-red-700"
-                                  onClick={() => handleDeleteJudgeServer(server.hostname)}
-                                  loading={deletingJudgeServerHostname === server.hostname}
-                                >
-                                  삭제
-                                </Button>
-                              </td>
-                            </tr>
-                          );
-                        })
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </section>
-            </div>
-          </Card>
-        );
-      }
+      case 'server':
+        return <ServerAdminSection />;
 
       case 'contest-edit': {
         const pageSize = 10;
@@ -3447,589 +2363,11 @@ export const AdminPage: React.FC = () => {
         );
       }
       case 'problem':
-        return (
-          <Card padding="lg">
-            <form onSubmit={handleProblemSubmit} className="space-y-6">
-              <div className="space-y-1">
-                <h2 className="text-xl font-semibold text-gray-900">문제 등록</h2>
-                <p className="text-sm text-gray-500">ZIP 테스트케이스 업로드 후 메타데이터를 입력하세요. SPJ는 현재 지원하지 않습니다.</p>
-              </div>
-
-              {problemMessage.error && (
-                <div className="rounded-md bg-red-50 px-4 py-3 text-sm text-red-600">{problemMessage.error}</div>
-              )}
-              {problemMessage.success && (
-                <div className="rounded-md bg-green-50 px-4 py-3 text-sm text-green-600">{problemMessage.success}</div>
-              )}
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                <Input
-                  label="표시 ID"
-                  value={problemForm.displayId}
-                  onChange={(e) => setProblemForm((prev) => ({ ...prev, displayId: e.target.value }))}
-                  required
-                />
-                <Input
-                  label="제목"
-                  value={problemForm.title}
-                  onChange={(e) => setProblemForm((prev) => ({ ...prev, title: e.target.value }))}
-                  required
-                />
-                <Input
-                  label="시간 제한 (ms)"
-                  type="number"
-                  value={problemForm.timeLimit}
-                  onChange={(e) => setProblemForm((prev) => ({ ...prev, timeLimit: e.target.value }))}
-                />
-                <Input
-                  label="메모리 제한 (MB)"
-                  type="number"
-                  value={problemForm.memoryLimit}
-                  onChange={(e) => setProblemForm((prev) => ({ ...prev, memoryLimit: e.target.value }))}
-                />
-                <Input
-                  label="태그 (쉼표로 구분)"
-                  value={problemForm.tags}
-                  onChange={(e) => setProblemForm((prev) => ({ ...prev, tags: e.target.value }))}
-                  placeholder="dp, greedy"
-                />
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">난이도</label>
-                  <select
-                    className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#58A0C8]"
-                    value={problemForm.difficulty}
-                    onChange={(e) => setProblemForm((prev) => ({ ...prev, difficulty: e.target.value as ProblemFormState['difficulty'] }))}
-                  >
-                    <option value="Low">Level1</option>
-                    <option value="Mid">Level2</option>
-                    <option value="High">Level3</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">룰 타입</label>
-                  <select
-                    className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#58A0C8]"
-                    value={problemForm.ruleType}
-                    onChange={(e) => setProblemForm((prev) => ({ ...prev, ruleType: e.target.value as ProblemFormState['ruleType'] }))}
-                  >
-                    <option value="ACM">ACM</option>
-                    <option value="OI">OI</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">공개/풀이 공유</label>
-                  <div className="flex items-center space-x-3">
-                    <label className="inline-flex items-center space-x-2 text-sm text-gray-700">
-                      <input
-                        type="checkbox"
-                        checked={problemForm.visible}
-                        onChange={(e) => setProblemForm((prev) => ({ ...prev, visible: e.target.checked }))}
-                      />
-                      <span>공개</span>
-                    </label>
-                    <label className="inline-flex items-center space-x-2 text-sm text-gray-700">
-                      <input
-                        type="checkbox"
-                        checked={problemForm.shareSubmission}
-                        onChange={(e) => setProblemForm((prev) => ({ ...prev, shareSubmission: e.target.checked }))}
-                      />
-                      <span>풀이 공유 허용</span>
-                    </label>
-                  </div>
-                </div>
-                <Input
-                  label="출처"
-                  value={problemForm.source}
-                  onChange={(e) => setProblemForm((prev) => ({ ...prev, source: e.target.value }))}
-                />
-                <Input
-                  label="힌트"
-                  value={problemForm.hint}
-                  onChange={(e) => setProblemForm((prev) => ({ ...prev, hint: e.target.value }))}
-                />
-                <Input
-                  label="IO 입력 파일명"
-                  value={problemForm.ioInput}
-                  onChange={(e) => setProblemForm((prev) => ({ ...prev, ioInput: e.target.value }))}
-                />
-                <Input
-                  label="IO 출력 파일명"
-                  value={problemForm.ioOutput}
-                  onChange={(e) => setProblemForm((prev) => ({ ...prev, ioOutput: e.target.value }))}
-                />
-              </div>
-
-              <RichTextEditor
-                label="문제 설명"
-                value={problemForm.description}
-                placeholder="문제 설명을 입력하세요."
-                onChange={(html: string) => setProblemForm((prev) => ({ ...prev, description: html }))}
-              />
-              <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
-                <RichTextEditor
-                  label="입력 설명"
-                  value={problemForm.inputDescription}
-                  placeholder="입력 형식을 설명해주세요."
-                  onChange={(html: string) => setProblemForm((prev) => ({ ...prev, inputDescription: html }))}
-                  className="md:col-span-1"
-                />
-                <RichTextEditor
-                  label="출력 설명"
-                  value={problemForm.outputDescription}
-                  placeholder="출력 형식을 설명해주세요."
-                  onChange={(html: string) => setProblemForm((prev) => ({ ...prev, outputDescription: html }))}
-                  className="md:col-span-1"
-                />
-              </div>
-
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-lg font-semibold text-gray-900">예제 입력/출력</h3>
-                  <Button type="button" variant="outline" onClick={handleAddSample}>
-                    예제 추가
-                  </Button>
-                </div>
-                <div className="space-y-4">
-                  {samples.map((sample, index) => (
-                    <div key={index} className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">예제 입력 #{index + 1}</label>
-                        <textarea
-                          className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#58A0C8] resize-none"
-                          rows={3}
-                          value={sample.input}
-                          onChange={(e) => handleSampleChange(index, 'input', e.target.value)}
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">예제 출력 #{index + 1}</label>
-                        <textarea
-                          className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#58A0C8] resize-none"
-                          rows={3}
-                          value={sample.output}
-                          onChange={(e) => handleSampleChange(index, 'output', e.target.value)}
-                        />
-                      </div>
-                      {samples.length > 1 && (
-                        <div className="md:col-span-2 flex justify-end">
-                          <Button type="button" variant="ghost" onClick={() => handleRemoveSample(index)}>
-                            예제 삭제
-                          </Button>
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="space-y-3">
-                <h3 className="text-lg font-semibold text-gray-900">지원 언어</h3>
-                <div className="flex flex-wrap gap-3">
-                  {availableLanguages.map((language) => (
-                    <label
-                      key={language}
-                      className="inline-flex items-center space-x-2 rounded-md border border-gray-300 px-3 py-1 text-sm text-gray-700"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={problemLanguages.includes(language)}
-                        onChange={() => toggleLanguage(language)}
-                      />
-                      <span>{getLanguageLabel(language)}</span>
-                    </label>
-                  ))}
-                </div>
-              </div>
-
-              <div className="space-y-3">
-                <h3 className="text-lg font-semibold text-gray-900">테스트케이스 업로드</h3>
-                <div className="flex flex-col md:flex-row md:items-center gap-4">
-                  <input
-                    type="file"
-                    accept=".zip"
-                    onChange={(e) => setTestCaseFile(e.target.files?.[0] ?? null)}
-                    className="text-sm"
-                  />
-                  <Button type="button" variant="outline" loading={isUploadingTestCases} onClick={handleUploadTestCases}>
-                    테스트케이스 업로드
-                  </Button>
-                  {testCaseId && (
-                    <span className="text-sm text-green-600">현재 ID: {testCaseId}</span>
-                  )}
-                </div>
-              </div>
-
-              <div className="flex justify-end">
-                <Button type="submit" loading={problemLoading}>문제 등록</Button>
-              </div>
-            </form>
-          </Card>
-        );
+        return <ProblemCreateSection />;
       case 'bulk':
-        return (
-          <Card padding="lg">
-            <form onSubmit={handleBulkSubmit} className="space-y-6">
-              <div className="space-y-1">
-                <h2 className="text-xl font-semibold text-gray-900">문제 대량 등록</h2>
-                <p className="text-sm text-gray-500">JSON 기반 ZIP 파일을 업로드하면 문제를 일괄 등록합니다.</p>
-              </div>
-
-              {bulkMessage.error && (
-                <div className="rounded-md bg-red-50 px-4 py-3 text-sm text-red-600">{bulkMessage.error}</div>
-              )}
-              {bulkMessage.success && (
-                <div className="rounded-md bg-green-50 px-4 py-3 text-sm text-green-600">{bulkMessage.success}</div>
-              )}
-
-              <div className="flex flex-col md:flex-row md:items-center gap-4">
-                <input
-                  type="file"
-                  accept=".zip"
-                  onChange={(e) => setBulkFile(e.target.files?.[0] ?? null)}
-                  className="text-sm"
-                />
-                {bulkFile && <span className="text-sm text-gray-600">선택된 파일: {bulkFile.name}</span>}
-              </div>
-
-              <div className="flex justify-end">
-                <Button type="submit" loading={bulkLoading}>대량 등록</Button>
-              </div>
-            </form>
-          </Card>
-        );
-      case 'problem-edit': {
-        const totalPages = Math.max(1, Math.ceil(problemEditTotal / PROBLEM_EDIT_PAGE_SIZE));
-        const canPrev = problemEditPage > 1;
-        const canNext = problemEditPage < totalPages;
-
-        return (
-          <Card padding="lg">
-            <div className="space-y-6">
-              <div className="space-y-1">
-                <h2 className="text-xl font-semibold text-gray-900">문제 수정</h2>
-                <p className="text-sm text-gray-500">OJ 백엔드에 등록된 문제를 검색하고 세부 정보를 수정하세요.</p>
-              </div>
-
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-                <div className="w-full sm:flex-1">
-                  <Input
-                    label="검색"
-                    value={problemEditSearchKeyword}
-                    placeholder="표시 ID, 제목 등"
-                    onChange={(e) => handleProblemEditSearchChange(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault();
-                        handleProblemEditSearchSubmit();
-                      }
-                    }}
-                  />
-                </div>
-                <Button onClick={handleProblemEditSearchSubmit} className="w-full sm:w-auto bg-[#113F67] text-white hover:bg-[#34699A] focus:ring-[#58A0C8]">
-                  검색
-                </Button>
-              </div>
-
-              <section className="space-y-6">
-                <div className="space-y-4">
-                  <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-                    <h3 className="text-sm font-medium text-gray-900">문제 목록</h3>
-                    <span className="text-xs text-gray-500">총 {problemEditTotal.toLocaleString()}개</span>
-                  </div>
-                  <div className="rounded-lg border border-gray-200 bg-white shadow-sm">
-                    {problemEditLoading ? (
-                      <div className="px-4 py-6 text-center text-sm text-gray-500">문제를 불러오는 중입니다...</div>
-                    ) : problemEditError ? (
-                      <div className="px-4 py-6 text-sm text-red-600">{problemEditError}</div>
-                    ) : problemEditList.length === 0 ? (
-                      <div className="px-4 py-6 text-sm text-gray-500">검색 결과가 없습니다.</div>
-                    ) : (
-                      <div className="overflow-x-auto">
-                        <table className="min-w-full divide-y divide-gray-200 text-left">
-                          <thead className="bg-gray-50">
-                            <tr>
-                              <th className="px-3 py-2 text-xs font-medium uppercase tracking-wider text-gray-500">표시 ID</th>
-                              <th className="px-3 py-2 text-xs font-medium uppercase tracking-wider text-gray-500">제목</th>
-                              <th className="px-3 py-2 text-xs font-medium uppercase tracking-wider text-gray-500">난이도</th>
-                              <th className="px-3 py-2 text-xs font-medium uppercase tracking-wider text-gray-500">공개</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-gray-100">
-                            {problemEditList.map((problem) => {
-                              const isActive = selectedProblemId === problem.id;
-                              return (
-                                <tr
-                                  key={`problem-edit-row-${problem.id}`}
-                                  className={`cursor-pointer transition-colors ${isActive ? 'bg-[#113F67]/10' : 'hover:bg-gray-50'}`}
-                                  onClick={() => setSelectedProblemId(problem.id)}
-                                >
-                                  <td className="px-3 py-2 text-sm text-gray-900">{problem.displayId ?? problem.id}</td>
-                                  <td className="px-3 py-2 text-sm text-gray-700">
-                                    <div className="font-medium text-gray-900">{problem.title}</div>
-                                    {problem.tags && problem.tags.length > 0 && (
-                                      <div className="mt-0.5 text-xs text-gray-500 truncate">{problem.tags.join(', ')}</div>
-                                    )}
-                                  </td>
-                                  <td className="px-3 py-2 text-sm text-gray-700">{problem.difficulty}</td>
-                                  <td className="px-3 py-2 text-sm">
-                                    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${problem.visible ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-600'}`}>
-                                      {problem.visible ? '공개' : '비공개'}
-                                    </span>
-                                  </td>
-                                </tr>
-                              );
-                            })}
-                          </tbody>
-                        </table>
-                      </div>
-                    )}
-                  </div>
-                  <div className="flex items-center justify-between text-xs text-gray-500">
-                    <div>
-                      {problemEditPage} / {totalPages}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        disabled={!canPrev}
-                        onClick={() => canPrev && fetchProblemEditList(problemEditPage - 1)}
-                      >
-                        이전
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        disabled={!canNext}
-                        onClick={() => canNext && fetchProblemEditList(problemEditPage + 1)}
-                      >
-                        다음
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-
-                {problemEditDetailLoading ? (
-                  <div className="rounded-lg border border-dashed border-gray-300 px-4 py-6 text-sm text-gray-500">
-                    문제 정보를 불러오는 중입니다...
-                  </div>
-                ) : !problemEditForm ? (
-                  <div className="rounded-lg border border-dashed border-gray-300 px-4 py-6 text-sm text-gray-500">
-                    수정할 문제를 선택하세요.
-                  </div>
-                ) : (
-                  <form onSubmit={handleProblemEditSubmit} className="space-y-6 rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
-                    {problemEditMessage.error && (
-                      <div className="rounded-md bg-red-50 px-4 py-2 text-sm text-red-600">{problemEditMessage.error}</div>
-                    )}
-                    {problemEditMessage.success && (
-                      <div className="rounded-md bg-green-50 px-4 py-2 text-sm text-green-600">{problemEditMessage.success}</div>
-                    )}
-
-                    <div className="grid gap-4 sm:grid-cols-2">
-                      <Input
-                        label="표시 ID"
-                        value={problemEditForm.displayId}
-                        onChange={(e) => handleProblemEditFieldChange('displayId', e.target.value)}
-                        required
-                      />
-                      <Input
-                        label="제목"
-                        value={problemEditForm.title}
-                        onChange={(e) => handleProblemEditFieldChange('title', e.target.value)}
-                        required
-                      />
-                      <Input
-                        label="시간 제한 (ms)"
-                        type="number"
-                        value={problemEditForm.timeLimit}
-                        onChange={(e) => handleProblemEditFieldChange('timeLimit', e.target.value)}
-                      />
-                      <Input
-                        label="메모리 제한 (MB)"
-                        type="number"
-                        value={problemEditForm.memoryLimit}
-                        onChange={(e) => handleProblemEditFieldChange('memoryLimit', e.target.value)}
-                      />
-                      <Input
-                        label="태그 (쉼표 구분)"
-                        value={problemEditForm.tags}
-                        onChange={(e) => handleProblemEditFieldChange('tags', e.target.value)}
-                      />
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">난이도</label>
-                        <select
-                          className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#58A0C8]"
-                          value={problemEditForm.difficulty}
-                          onChange={(e) => handleProblemEditFieldChange('difficulty', e.target.value as AdminProblemDetail['difficulty'])}
-                        >
-                          <option value="Low">Level1</option>
-                          <option value="Mid">Level2</option>
-                          <option value="High">Level3</option>
-                        </select>
-                      </div>
-                      <div className="space-y-2">
-                        <label className="block text-sm font-medium text-gray-700">표시 설정</label>
-                        <div className="flex items-center gap-3">
-                          <label className="inline-flex items-center gap-2 text-sm text-gray-700">
-                            <input
-                              type="checkbox"
-                              checked={problemEditForm.visible}
-                              onChange={(e) => handleProblemEditFieldChange('visible', e.target.checked)}
-                            />
-                            <span>공개</span>
-                          </label>
-                          <label className="inline-flex items-center gap-2 text-sm text-gray-700">
-                            <input
-                              type="checkbox"
-                              checked={problemEditForm.shareSubmission}
-                              onChange={(e) => handleProblemEditFieldChange('shareSubmission', e.target.checked)}
-                            />
-                            <span>풀이 공유</span>
-                          </label>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="grid gap-4 md:grid-cols-2">
-                      <Input
-                        label="입력 파일명"
-                        value={problemEditForm.ioInput}
-                        onChange={(e) => handleProblemEditFieldChange('ioInput', e.target.value)}
-                      />
-                      <Input
-                        label="출력 파일명"
-                        value={problemEditForm.ioOutput}
-                        onChange={(e) => handleProblemEditFieldChange('ioOutput', e.target.value)}
-                      />
-                    </div>
-
-                    <RichTextEditor
-                      label="문제 설명"
-                      value={problemEditForm.description}
-                      placeholder="문제 설명을 입력하세요."
-                      onChange={(html: string) => handleProblemEditFieldChange('description', html)}
-                    />
-
-                    <div className="grid gap-4 md:grid-cols-2">
-                      <RichTextEditor
-                        label="입력 설명"
-                        value={problemEditForm.inputDescription}
-                        placeholder="입력 형식을 설명해주세요."
-                        onChange={(html: string) => handleProblemEditFieldChange('inputDescription', html)}
-                        className="md:col-span-1"
-                      />
-                      <RichTextEditor
-                        label="출력 설명"
-                        value={problemEditForm.outputDescription}
-                        placeholder="출력 형식을 설명해주세요."
-                        onChange={(html: string) => handleProblemEditFieldChange('outputDescription', html)}
-                        className="md:col-span-1"
-                      />
-                    </div>
-
-                    <div className="grid gap-4 md:grid-cols-2">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">힌트</label>
-                        <textarea
-                          className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#58A0C8] resize-none"
-                          rows={2}
-                          value={problemEditForm.hint}
-                          onChange={(e) => handleProblemEditFieldChange('hint', e.target.value)}
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">출처</label>
-                        <textarea
-                          className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#58A0C8] resize-none"
-                          rows={2}
-                          value={problemEditForm.source}
-                          onChange={(e) => handleProblemEditFieldChange('source', e.target.value)}
-                        />
-                      </div>
-                    </div>
-
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between">
-                        <h4 className="text-sm font-medium text-gray-900">예시</h4>
-                        <Button type="button" variant="outline" onClick={handleAddProblemEditSample}>
-                          예시 추가
-                        </Button>
-                      </div>
-                      <div className="space-y-4">
-                        {problemEditForm.samples.map((sample, index) => (
-                          <div key={`problem-edit-sample-${index}`} className="rounded-lg border border-gray-200 p-4 space-y-3">
-                            <div className="flex items-center justify-between">
-                              <span className="text-sm font-medium text-gray-700">예시 {index + 1}</span>
-                              {problemEditForm.samples.length > 1 && (
-                                <button
-                                  type="button"
-                                  className="text-xs text-red-600 hover:text-red-700"
-                                  onClick={() => handleRemoveProblemEditSample(index)}
-                                >
-                                  삭제
-                                </button>
-                              )}
-                            </div>
-                            <div className="grid gap-3 md:grid-cols-2">
-                              <div>
-                                <label className="block text-xs font-medium text-gray-600 mb-1">입력</label>
-                                <textarea
-                                  className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#58A0C8] resize-none"
-                                  rows={3}
-                                  value={sample.input}
-                                  onChange={(e) => handleProblemEditSampleChange(index, 'input', e.target.value)}
-                                />
-                              </div>
-                              <div>
-                                <label className="block text-xs font-medium text-gray-600 mb-1">출력</label>
-                                <textarea
-                                  className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#58A0C8] resize-none"
-                                  rows={3}
-                                  value={sample.output}
-                                  onChange={(e) => handleProblemEditSampleChange(index, 'output', e.target.value)}
-                                />
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div className="space-y-2">
-                      <h4 className="text-sm font-medium text-gray-900">허용 언어</h4>
-                      <div className="flex flex-wrap gap-3">
-                        {availableLanguages.map((language) => {
-                          const checked = problemEditForm.languages.includes(language);
-                          return (
-                            <label
-                              key={`problem-edit-language-${language}`}
-                              className="inline-flex items-center gap-2 text-xs text-gray-700"
-                            >
-                              <input
-                                type="checkbox"
-                                checked={checked}
-                                onChange={(e) => handleProblemEditLanguageToggle(language, e.target.checked)}
-                              />
-                              <span>{getLanguageLabel(language)}</span>
-                            </label>
-                          );
-                        })}
-                      </div>
-                    </div>
-
-                    <div className="flex justify-end">
-                      <Button type="submit" loading={problemEditSaving}>
-                        문제 정보 저장
-                      </Button>
-                    </div>
-                  </form>
-                )}
-              </section>
-            </div>
-          </Card>
-        );
-      }
+        return <BulkProblemManager />;
+      case 'problem-edit':
+        return <ProblemEditSection />;
       case 'contest':
         return (
           <Card padding="lg">
@@ -4563,79 +2901,17 @@ export const AdminPage: React.FC = () => {
                   <h3 className="text-sm font-medium text-gray-700">문제 목록</h3>
                   <p className="mt-1 text-xs text-gray-500">문제집 생성 시 함께 등록할 문제를 검색해 선택하거나 직접 ID를 입력하세요.</p>
                 </div>
-                <div className="flex items-end gap-2">
-                  <div className="flex-1">
-                    <Input
-                      label="문제 검색 또는 ID 입력"
-                      value={workbookProblemInput}
-                      placeholder="예: 101 또는 다익스트라"
-                      onChange={(e) => handleCreateWorkbookProblemInputChange(e.target.value)}
-                      onKeyDown={handleCreateWorkbookProblemInputKeyDown}
-                    />
-                  </div>
-                  <Button type="button" variant="outline" size="sm" onClick={handleAddWorkbookProblemId}>
-                    ID 추가
-                  </Button>
-                </div>
-                {problemSearchError && (
-                  <div className="rounded-md bg-red-50 px-3 py-2 text-xs text-red-600">{problemSearchError}</div>
-                )}
-                {!problemSearchError && workbookProblemInput.trim() && isProblemSearchLoading && (
-                  <p className="text-xs text-gray-500">문제를 검색 중입니다...</p>
-                )}
-                {!problemSearchError && workbookProblemInput.trim() && !isProblemSearchLoading && problemSearchResults.length === 0 && (
-                  <p className="text-xs text-gray-500">검색 결과가 없습니다.</p>
-                )}
-                {!problemSearchError && problemSearchResults.length > 0 && (
-                  <ul className="divide-y divide-gray-200 overflow-hidden rounded-lg border border-gray-200">
-                    {problemSearchResults.map((problem) => (
-                      <li key={`workbook-problem-suggestion-${problem.id}`}>
-                        <button
-                          type="button"
-                          className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm hover:bg-gray-50"
-                          onClick={() => handleSelectCreationProblemSuggestion(problem)}
-                        >
-                          <div>
-                            <p className="font-medium text-gray-800">
-                              {problem.displayId ?? problem.id} · {problem.title}
-                            </p>
-                            <p className="text-xs text-gray-500">
-                              난이도: {problem.difficulty}
-                            </p>
-                          </div>
-                          <span className="text-xs text-[#113F67]">추가</span>
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-                {workbookForm.problemIds.length > 0 && (
-                  <div className="flex flex-wrap gap-2">
-                    {workbookForm.problemIds.map((id) => {
-                      const meta = selectedProblemMeta[id];
-                      const label = meta?.displayId ?? id;
-                      return (
-                        <span
-                          key={`workbook-problem-chip-${id}`}
-                          className="inline-flex items-center gap-2 rounded-full bg-[#113F67]/10 px-3 py-1 text-sm text-[#113F67]"
-                        >
-                          <span className="font-medium">문제 {label}</span>
-                          {meta?.title && (
-                            <span className="text-xs text-gray-500 max-w-[160px] truncate">{meta.title}</span>
-                          )}
-                          <button
-                            type="button"
-                            className="text-[#113F67] transition-colors hover:text-[#34699A]"
-                            onClick={() => handleRemoveWorkbookProblemId(id)}
-                            aria-label={`문제 ${label} 삭제`}
-                          >
-                            ×
-                          </button>
-                        </span>
-                      );
-                    })}
-                  </div>
-                )}
+                <ProblemSelectionSection
+                  selectedProblems={selectedWorkbookProblems}
+                  onAddProblem={handleAddWorkbookProblem}
+                  onRemoveProblem={handleRemoveWorkbookProblem}
+                  message={workbookSelectionMessage}
+                  onMessageChange={setWorkbookSelectionMessage}
+                  helperText="문제집 생성 시 함께 등록할 문제를 검색해 선택하거나 직접 ID를 입력하세요."
+                  addButtonLabel="문제 추가"
+                  emptySelectionText="등록할 문제를 추가하세요."
+                  resetSignal={workbookSelectionReset}
+                />
               </div>
 
               <div>
