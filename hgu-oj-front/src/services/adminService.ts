@@ -11,6 +11,7 @@ import {
   AdminContest,
   AdminContestListResponse,
   ContestAnnouncement,
+  SystemMetrics,
 } from '../types';
 
 const parseBoolean = (value: unknown): boolean => {
@@ -491,12 +492,12 @@ export const adminService = {
 
     const results: AdminUser[] = Array.isArray(data?.results)
       ? data.results.map((item: unknown) => {
-          const adapt = item as AdminUser;
-          return {
-            ...adapt,
-            real_tfa: adapt.two_factor_auth,
-          };
-        })
+        const adapt = item as AdminUser;
+        return {
+          ...adapt,
+          real_tfa: adapt.two_factor_auth,
+        };
+      })
       : [];
 
     return {
@@ -560,13 +561,13 @@ export const adminService = {
     const data = unwrap(response);
     const servers: JudgeServer[] = Array.isArray(data?.servers)
       ? data.servers.map((item) => ({
-          ...item,
-          cpu_usage: Number(item?.cpu_usage ?? 0),
-          memory_usage: Number(item?.memory_usage ?? 0),
-          task_number: Number(item?.task_number ?? 0),
-          cpu_core: Number(item?.cpu_core ?? 0),
-          is_disabled: Boolean(item?.is_disabled),
-        }))
+        ...item,
+        cpu_usage: Number(item?.cpu_usage ?? 0),
+        memory_usage: Number(item?.memory_usage ?? 0),
+        task_number: Number(item?.task_number ?? 0),
+        cpu_core: Number(item?.cpu_core ?? 0),
+        is_disabled: Boolean(item?.is_disabled),
+      }))
       : [];
 
     return {
@@ -634,6 +635,22 @@ export const adminService = {
       };
     }
   },
+
+  getSystemMetrics: async (): Promise<SystemMetrics> => {
+    const response = await fetch(`${MS_API_BASE}/monitor/judge-status`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      credentials: 'include',
+    });
+
+    if (!response.ok) {
+      throw new Error(`시스템 지표를 가져오지 못했습니다. (status ${response.status})`);
+    }
+
+    return response.json();
+  },
 };
 
 const mapAdminContest = (raw: any): AdminContest => {
@@ -645,10 +662,10 @@ const mapAdminContest = (raw: any): AdminContest => {
   const createdByRaw = raw?.created_by ?? raw?.createdBy;
   const createdBy = createdByRaw
     ? {
-        id: createdByRaw.id,
-       username: createdByRaw.username,
-        realName: createdByRaw.real_name ?? createdByRaw.realName,
-      }
+      id: createdByRaw.id,
+      username: createdByRaw.username,
+      realName: createdByRaw.real_name ?? createdByRaw.realName,
+    }
     : undefined;
 
   return {
@@ -737,17 +754,17 @@ const adaptAdminProblemDetail = (raw: any): AdminProblemDetail => {
 
   const samples = Array.isArray(raw?.samples)
     ? raw.samples.map((item: any) => ({
-        input: typeof item?.input === 'string' ? item.input : item?.sample_input ?? '',
-        output: typeof item?.output === 'string' ? item.output : item?.sample_output ?? '',
-      }))
+      input: typeof item?.input === 'string' ? item.input : item?.sample_input ?? '',
+      output: typeof item?.output === 'string' ? item.output : item?.sample_output ?? '',
+    }))
     : [];
 
   const testCaseScore = Array.isArray(raw?.test_case_score)
     ? raw.test_case_score.map((item: any) => ({
-        input_name: item?.input_name ?? item?.inputName ?? '',
-        output_name: item?.output_name ?? item?.outputName ?? '',
-        score: Number(item?.score ?? 0),
-      }))
+      input_name: item?.input_name ?? item?.inputName ?? '',
+      output_name: item?.output_name ?? item?.outputName ?? '',
+      score: Number(item?.score ?? 0),
+    }))
     : [];
 
   const languages = Array.isArray(raw?.languages)
