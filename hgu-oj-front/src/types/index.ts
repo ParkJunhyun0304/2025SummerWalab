@@ -387,3 +387,11 @@ export interface OrganizationListResponse {
   page: number;
   size: number;
 }
+
+export interface SystemMetrics {
+  max_wait_time: number;
+  queue_size: number;
+  submission_rate: number;
+  history: Array<{ time: string; count: number }>;
+  timestamp: string;
+}
