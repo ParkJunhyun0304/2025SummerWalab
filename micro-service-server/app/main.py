@@ -17,6 +17,7 @@ from app.workbook import routes as workbook_routes
 from app.organization import routes as organization_routes
 from app.organization_ranking import routes as organization_ranking_routes
 from app.contest_user import routes as contest_user_routes
+import app.monitoring.routes as monitoring_routes
 
 
 @asynccontextmanager
@@ -43,6 +44,7 @@ app.include_router(auto_save_routes.router)
 app.include_router(organization_routes.router)
 app.include_router(organization_ranking_routes.router)
 app.include_router(contest_user_routes.router)
+app.include_router(monitoring_routes.router)
 
 
 @app.get("/")
