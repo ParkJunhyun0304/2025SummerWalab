@@ -1,10 +1,10 @@
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.user.DTO import UserData
+from app.user.schemas import UserData
 from app.workbook.models import Workbook, WorkbookProblem
 from app.workbook.schemas import WorkbookCreate, WorkbookUpdate
 from typing import List, Optional
 from fastapi import HTTPException
-import app.user.user_repository as user_repo
+import app.user.repository as user_repo
 import app.workbook.repository as workbook_repo
 
 

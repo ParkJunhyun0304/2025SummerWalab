@@ -15,7 +15,7 @@ from app.contest_user.schemas import (
     ContestUserStatus,
     ParticipationStatus,
 )
-from app.user.DTO import UserData
+from app.user.schemas import UserData
 from app.user import repository as user_repository
 from app.utils.database import transactional
 

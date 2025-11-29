@@ -27,3 +27,12 @@ class User(Base):
 
     # Relationship
     created_problems = relationship("Problem", back_populates="created_by")
+
+class UserData(Base):
+    __tablename__ = "micro_userdata"
+    __table_args__ = {'schema': 'public'}
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(Text, nullable=False)
+    student_id = Column(Text, nullable=False, unique=True)
+    major_id = Column(Integer, nullable=False)
