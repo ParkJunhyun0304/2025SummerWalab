@@ -15,3 +15,8 @@ export const PROBLEM_SUMMARY_LABELS = {
 } as const;
 
 export type ProblemStatusKey = keyof typeof PROBLEM_STATUS_LABELS;
+
+export const isProblemStatusKey = (value: unknown): value is ProblemStatusKey => {
+  if (typeof value !== 'string') return false;
+  return value in PROBLEM_STATUS_LABELS;
+};

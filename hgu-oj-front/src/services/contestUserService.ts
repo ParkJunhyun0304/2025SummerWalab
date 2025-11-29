@@ -33,6 +33,15 @@ type RawContestUserRegistrationList = {
   pending?: RawContestUserRegistration[];
 };
 
+const CONTEST_USER_STATUS_VALUES: ContestUserStatusValue[] = ['approved', 'pending', 'rejected'];
+
+const normalizeContestUserStatusValue = (value?: string): ContestUserStatusValue | undefined => {
+  if (!value) return undefined;
+  return CONTEST_USER_STATUS_VALUES.includes(value as ContestUserStatusValue)
+    ? (value as ContestUserStatusValue)
+    : undefined;
+};
+
 const trimTrailingSlash = (value: string) => value.replace(/\/$/, '');
 
 const rawBase = (import.meta.env.VITE_MS_API_BASE as string | undefined) || '/ms/api';
@@ -64,7 +73,7 @@ const buildStatus = (payload: RawContestUserStatus | null, fallbackContestId: nu
   const joinedFlag = Boolean(payload?.joined);
   const joinedAt = payload?.joined_at ?? payload?.joinedAt;
   const isAdmin = Boolean(payload?.is_admin ?? payload?.isAdmin);
-  const status = typeof payload?.status === 'string' ? payload.status : undefined;
+  const status = normalizeContestUserStatusValue(payload?.status);
   const requiresApproval = Boolean(payload?.requires_approval ?? payload?.requiresApproval);
   return {
     contestId,
@@ -79,7 +88,7 @@ const buildStatus = (payload: RawContestUserStatus | null, fallbackContestId: nu
 
 const adaptRegistration = (entry: RawContestUserRegistration): ContestUserRegistration => {
   const userId = Number(entry.user_id ?? entry.userId ?? 0);
-  const status = (entry.status ?? 'pending') as ContestUserStatusValue;
+  const status = normalizeContestUserStatusValue(entry.status) ?? 'pending';
   return {
     userId,
     username: entry.username ?? null,

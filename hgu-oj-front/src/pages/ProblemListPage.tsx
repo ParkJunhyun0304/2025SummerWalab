@@ -249,10 +249,7 @@ export const ProblemListPage: React.FC = () => {
         if (!isAuthenticated) return true;
         const status = resolveProblemStatus(problem);
         if (statusFilter === 'all') return true;
-        if (statusFilter === PROBLEM_STATUS_LABELS.solved) return status === PROBLEM_STATUS_LABELS.solved;
-        if (statusFilter === PROBLEM_STATUS_LABELS.wrong) return status === PROBLEM_STATUS_LABELS.wrong;
-        if (statusFilter === PROBLEM_STATUS_LABELS.untouched) return status === PROBLEM_STATUS_LABELS.untouched;
-        return true;
+        return status === statusFilter;
       });
 
     const extractIdentifier = (problem: any) => (problem.displayId ?? problem._id ?? problem.id ?? '').toString();
@@ -333,20 +330,6 @@ export const ProblemListPage: React.FC = () => {
     if (tagCountsError instanceof Error) return tagCountsError.message;
     return typeof tagCountsError === 'string' ? tagCountsError : '태그 정보를 불러오지 못했습니다.';
   }, [tagCountsError]);
-
-  const hasActiveFilters = useMemo(() => {
-    const sortField = filter.sortField ?? 'title';
-    const sortOrder = filter.sortOrder ?? 'asc';
-    const statusFilter = filter.statusFilter ?? 'all';
-    const searchValue = filter.search?.trim() ?? '';
-    return (
-      selectedTags.length > 0 ||
-      searchValue.length > 0 ||
-      sortField !== 'title' ||
-      sortOrder !== 'asc' ||
-      statusFilter !== 'all'
-    );
-  }, [filter.sortField, filter.sortOrder, filter.statusFilter, filter.search, selectedTags]);
 
   useEffect(() => {
     if (!isAuthenticated && (filter.statusFilter && filter.statusFilter !== 'all')) {
@@ -432,9 +415,9 @@ export const ProblemListPage: React.FC = () => {
                   className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 sm:w-28"
                 >
                   <option value="all">전체</option>
-                  <option value={PROBLEM_STATUS_LABELS.untouched}>{PROBLEM_STATUS_LABELS.untouched}</option>
-                  <option value={PROBLEM_STATUS_LABELS.solved}>{PROBLEM_STATUS_LABELS.solved}</option>
-                  <option value={PROBLEM_STATUS_LABELS.wrong}>{PROBLEM_STATUS_LABELS.wrong}</option>
+                  <option value="untouched">{PROBLEM_STATUS_LABELS.untouched}</option>
+                  <option value="solved">{PROBLEM_STATUS_LABELS.solved}</option>
+                  <option value="wrong">{PROBLEM_STATUS_LABELS.wrong}</option>
                 </select>
                 <button
                   type="button"

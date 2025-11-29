@@ -2,7 +2,7 @@ import React from 'react';
 import type { Problem } from '../../../types';
 import type { ContestLockReason } from '../types';
 import { ContestProblemList } from '../../../components/organisms/ContestProblemList';
-import { PROBLEM_STATUS_LABELS } from '../../../constants/problemStatus';
+import { PROBLEM_STATUS_LABELS, ProblemStatusKey } from '../../../constants/problemStatus';
 
 interface ContestProblemsTabProps {
   lockState: {
@@ -17,7 +17,8 @@ interface ContestProblemsTabProps {
   processedContestProblems: Problem[];
   searchState: { query: string; field: 'title' | 'tag' | 'number' };
   sortState: { field: 'number' | 'submission' | 'accuracy'; order: 'asc' | 'desc' };
-  statusFilter: string;
+  statusFilter: 'all' | ProblemStatusKey;
+  canViewProtectedContent: boolean;
   handlers: {
     handleSearchChange: (value: string) => void;
     handleSearchSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
@@ -43,6 +44,7 @@ export const ContestProblemsTab: React.FC<ContestProblemsTabProps> = ({
   handlers,
   onProblemClick,
   myRankProgress,
+  canViewProtectedContent: _canViewProtectedContent,
 }) => {
   if (lockState.locked) {
     if (lockState.reason === 'verifying') {
@@ -108,13 +110,13 @@ export const ContestProblemsTab: React.FC<ContestProblemsTabProps> = ({
             <select
               id="contest-problem-status-filter"
               value={statusFilter}
-              onChange={(event) => handlers.handleStatusFilterChange(event.target.value)}
+              onChange={(event) => handlers.handleStatusFilterChange(event.target.value as 'all' | ProblemStatusKey)}
               className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 sm:w-28"
             >
               <option value="all">전체</option>
-              <option value={PROBLEM_STATUS_LABELS.untouched}>{PROBLEM_STATUS_LABELS.untouched}</option>
-              <option value={PROBLEM_STATUS_LABELS.solved}>{PROBLEM_STATUS_LABELS.solved}</option>
-              <option value={PROBLEM_STATUS_LABELS.wrong}>{PROBLEM_STATUS_LABELS.wrong}</option>
+              <option value="untouched">{PROBLEM_STATUS_LABELS.untouched}</option>
+              <option value="solved">{PROBLEM_STATUS_LABELS.solved}</option>
+              <option value="wrong">{PROBLEM_STATUS_LABELS.wrong}</option>
             </select>
             <button
               type="button"

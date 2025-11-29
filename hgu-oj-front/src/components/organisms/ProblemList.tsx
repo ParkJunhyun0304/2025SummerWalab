@@ -1,4 +1,4 @@
-import React, { ReactNode, useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { Problem } from '../../types';
 import { Button } from '../atoms/Button';
 import { resolveProblemStatus } from '../../utils/problemStatus';
@@ -89,13 +89,13 @@ export const ProblemList: React.FC<ProblemListProps> = ({
     if (!showStatus) return undefined;
     const state = resolveStatusState(problem);
 
-    if (state === PROBLEM_STATUS_LABELS.solved) {
+    if (state === 'solved') {
       return {
         label: PROBLEM_STATUS_LABELS.solved,
         className: 'bg-green-100 text-green-700 border border-green-200',
       };
     }
-    if (state === PROBLEM_STATUS_LABELS.wrong) {
+    if (state === 'wrong') {
       return {
         label: PROBLEM_STATUS_LABELS.wrong,
         className: 'bg-red-100 text-red-600 border border-red-200',

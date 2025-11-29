@@ -167,21 +167,29 @@ export const HomePage: React.FC = () => {
   }, [recentSolvedData?.items]);
 
   const runningContests = useMemo<ContestHighlight[]>(() => {
-    return (runningContestsData?.data ?? []).map((contest) => ({
-      id: contest.id,
-      title: contest.title,
-      startTime: contest.startTime ?? contest.start_time,
-      endTime: contest.endTime ?? contest.end_time,
-    }));
+    return (runningContestsData?.data ?? []).map((contest) => {
+      const startTime = contest.startTime ?? (contest as any).start_time;
+      const endTime = contest.endTime ?? (contest as any).end_time;
+      return {
+        id: contest.id,
+        title: contest.title,
+        startTime,
+        endTime,
+      };
+    });
   }, [runningContestsData?.data]);
 
   const upcomingContests = useMemo<ContestHighlight[]>(() => {
-    return (upcomingContestsData?.data ?? []).map((contest) => ({
-      id: contest.id,
-      title: contest.title,
-      startTime: contest.startTime ?? contest.start_time,
-      endTime: contest.endTime ?? contest.end_time,
-    }));
+    return (upcomingContestsData?.data ?? []).map((contest) => {
+      const startTime = contest.startTime ?? (contest as any).start_time;
+      const endTime = contest.endTime ?? (contest as any).end_time;
+      return {
+        id: contest.id,
+        title: contest.title,
+        startTime,
+        endTime,
+      };
+    });
   }, [upcomingContestsData?.data]);
 
   const {

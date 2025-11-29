@@ -2,7 +2,7 @@ import { useCallback, useMemo, useState } from 'react';
 import type { ContestRankEntry, Problem } from '../../../types';
 import { useContestProblems } from '../../../hooks/useContests';
 import { resolveProblemStatus } from '../../../utils/problemStatus';
-import { PROBLEM_STATUS_LABELS, ProblemStatusKey } from '../../../constants/problemStatus';
+import { ProblemStatusKey, isProblemStatusKey } from '../../../constants/problemStatus';
 
 interface UseContestProblemsControllerOptions {
   contestId: number;
@@ -110,10 +110,7 @@ export const useContestProblemsController = ({
     const matchesStatus = (problem: Problem) => {
       const status = resolveProblemStatus(problem, { override: myRankProgress?.[problem.id] });
       if (statusFilter === 'all') return true;
-      if (statusFilter === PROBLEM_STATUS_LABELS.solved) return status === PROBLEM_STATUS_LABELS.solved;
-      if (statusFilter === PROBLEM_STATUS_LABELS.wrong) return status === PROBLEM_STATUS_LABELS.wrong;
-      if (statusFilter === PROBLEM_STATUS_LABELS.untouched) return status === PROBLEM_STATUS_LABELS.untouched;
-      return true;
+      return status === statusFilter;
     };
 
     const safeNumber = (value: unknown) => {
@@ -170,11 +167,11 @@ export const useContestProblemsController = ({
     return (problems ?? []).reduce(
       (acc, problem) => {
         const status = resolveProblemStatus(problem, { override: myRankProgress?.[problem.id] });
-        if (status === PROBLEM_STATUS_LABELS.solved) {
+        if (status === 'solved') {
           acc.solved += 1;
-        } else if (status === PROBLEM_STATUS_LABELS.wrong) {
+        } else if (status === 'wrong') {
           acc.wrong += 1;
-        } else if (status === PROBLEM_STATUS_LABELS.untouched) {
+        } else if (status === 'untouched') {
           acc.untouched += 1;
         } else {
           acc.attempted += 1;
@@ -235,8 +232,8 @@ export const useContestProblemsController = ({
       setStatusFilter('all');
       return;
     }
-    if (Object.values(PROBLEM_STATUS_LABELS).includes(value as ProblemStatusKey)) {
-      setStatusFilter(value as ProblemStatusKey);
+    if (isProblemStatusKey(value)) {
+      setStatusFilter(value);
     } else {
       setStatusFilter('all');
     }
