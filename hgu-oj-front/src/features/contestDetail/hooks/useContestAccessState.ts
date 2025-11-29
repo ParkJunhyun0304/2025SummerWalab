@@ -11,6 +11,7 @@ interface UseContestAccessStateOptions {
   contest?: Contest;
   contestPhase: 'before' | 'running' | 'after';
   requiresPassword: boolean;
+  requiresApproval?: boolean;
   isAuthenticated: boolean;
   hasContestAdminOverride: boolean;
   onProtectedAccessGranted?: () => void;
@@ -21,6 +22,7 @@ export const useContestAccessState = ({
   contest,
   contestPhase,
   requiresPassword,
+  requiresApproval = false,
   isAuthenticated,
   hasContestAdminOverride,
   onProtectedAccessGranted,
@@ -173,11 +175,17 @@ export const useContestAccessState = ({
   const joinContestMutation = useMutation({
     mutationFn: () => contestUserService.join(contestId),
     onSuccess: (result) => {
-      const pending = result.status === 'pending' || (result as { requiresApproval?: boolean }).requiresApproval;
+      const pending =
+        (requiresApproval && contestPhase === 'running') ||
+        result.status === 'pending' ||
+        (result as { requiresApproval?: boolean }).requiresApproval;
       setJoinFeedback({
         type: 'success',
         message: pending ? '참여 신청이 접수되었습니다. 관리자 승인 후 입장할 수 있습니다.' : '참여 신청이 완료되었습니다.',
       });
+      if (!pending) {
+        setHasAccess(true);
+      }
       refetchMembership();
     },
     onError: (err: unknown) => {

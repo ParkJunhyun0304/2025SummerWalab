@@ -1284,15 +1284,10 @@ export const ProblemDetailPage: React.FC = () => {
       {contestContextId && contestMeta && (
         <div className={`border-b px-4 py-3 text-xs sm:text-sm ${isDarkTheme ? 'border-slate-700 bg-slate-900 text-slate-200' : 'border-slate-200 bg-white text-slate-600'}`}>
           <div className="mx-auto flex max-w-7xl flex-col gap-3 lg:flex-row lg:items-center lg:justify-between lg:gap-6">
-            <div className="flex items-center gap-5">
-              <button
-                type="button"
-                onClick={() => navigate('/')}
-                className={`-ml-12 text-lg font-semibold tracking-tight transition ${isDarkTheme ? 'text-blue-200 hover:text-blue-300' : 'text-blue-700 hover:text-blue-800'}`}
-              >
-                HGU Online Judge
-              </button>
-              <span className={`text-lg font-semibold ${isDarkTheme ? 'text-slate-100' : 'text-slate-900'}`}>{contestMeta.title}</span>
+            <div className="flex items-center gap-3">
+              <span className={`text-lg font-semibold ${isDarkTheme ? 'text-slate-100' : 'text-slate-900'}`}>
+                {contestMeta.title}
+              </span>
             </div>
             <div className="flex flex-1 flex-wrap items-end justify-center gap-6 text-right">
               <div className="flex flex-col items-start">

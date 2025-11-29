@@ -137,6 +137,7 @@ const mapContest = (raw: any): Contest => ({
   contestType: raw.contest_type ?? raw.contestType,
   realTimeRank: raw.real_time_rank ?? raw.realTimeRank,
   now: raw.now,
+  requiresApproval: raw.requires_approval ?? raw.requiresApproval,
   problemCount: (() => {
     const candidates = [
       raw.problem_count,

@@ -116,6 +116,7 @@ export interface CreateContestPayload {
   visible: boolean;
   real_time_rank: boolean;
   allowed_ip_ranges: string[];
+  requires_approval?: boolean;
 }
 
 export interface CreateWorkbookPayload {
@@ -173,6 +174,7 @@ export interface UpdateContestPayload {
   visible: boolean;
   real_time_rank: boolean;
   allowed_ip_ranges: string[];
+  requires_approval?: boolean;
 }
 
 interface ContestProblemListPayload {
