@@ -38,14 +38,23 @@ async def fetch_filtered_problems(
     page: int,
     page_size: int,
 ) -> Tuple[List[Problem], int]:
-    base_stmt: Select = select(Problem).options(selectinload(Problem.tags))
+    visibility_filter = Problem.is_public.is_(True) & Problem.contest_id.is_(None)
+    base_stmt: Select = (
+        select(Problem)
+        .options(selectinload(Problem.tags))
+        .where(visibility_filter)
+    )
     tagged_problem_ids_stmt: Optional[Select] = None
 
     if tags:
         tagged_problem_ids_stmt = (
             select(problem_tags_association_table.c.problem_id)
             .join(ProblemTag, ProblemTag.id == problem_tags_association_table.c.problemtag_id)
-            .where(ProblemTag.name.in_(tags))
+            .join(Problem, Problem.id == problem_tags_association_table.c.problem_id)
+            .where(
+                ProblemTag.name.in_(tags),
+                visibility_filter,
+            )
             .group_by(problem_tags_association_table.c.problem_id)
             .having(func.count(func.distinct(ProblemTag.name)) == len(tags))
         )
@@ -60,7 +69,8 @@ async def fetch_filtered_problems(
     if tagged_problem_ids_stmt is not None:
         count_stmt = select(func.count()).select_from(tagged_problem_ids_stmt.subquery())
     else:
-        count_stmt = select(func.count()).select_from(Problem)
+        visible_problems = select(Problem.id).where(visibility_filter).subquery()
+        count_stmt = select(func.count()).select_from(visible_problems)
 
     total_result = await session.execute(count_stmt)
     total_count = total_result.scalar() or 0

@@ -9,7 +9,7 @@ const RegisterPage: React.FC = () => {
   const { isAuthenticated } = useAuthStore();
 
   // Registration disabled flag
-  const registrationDisabled = true;
+  const registrationDisabled = false;
 
   const [formData, setFormData] = useState({
     username: '',

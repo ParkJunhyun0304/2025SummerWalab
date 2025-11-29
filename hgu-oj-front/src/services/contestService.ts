@@ -6,6 +6,30 @@ import { mapProblem } from '../utils/problemMapper';
 const trimTrailingSlash = (value: string) => value.replace(/\/$/, '');
 const MICRO_API_BASE = MS_API_BASE ? trimTrailingSlash(MS_API_BASE) : '';
 
+type ContestProblemStat = {
+  contest_id?: number;
+  problem_id?: number;
+  problemId?: number;
+  display_id?: string | number;
+  displayId?: string | number;
+  submission_count?: number;
+  submissionCount?: number;
+  attempt_user_count?: number;
+  attemptUserCount?: number;
+  solved_user_count?: number;
+  solvedUserCount?: number;
+  accuracy?: number;
+};
+
+type ContestUserScore = {
+  user_id?: number;
+  userId?: number;
+  total_score?: number;
+  totalScore?: number;
+  solved_problems?: number;
+  solvedProblems?: number;
+};
+
 const fetchContestProblemCount = async (contestId: number): Promise<number | undefined> => {
   if (!MICRO_API_BASE) {
     return undefined;
@@ -24,6 +48,70 @@ const fetchContestProblemCount = async (contestId: number): Promise<number | und
   } catch {
     return undefined;
   }
+};
+
+const fetchContestProblemStats = async (contestId: number, problemIds: number[]): Promise<Map<number, ContestProblemStat>> => {
+  const result = new Map<number, ContestProblemStat>();
+  if (!MICRO_API_BASE || contestId <= 0 || problemIds.length === 0) {
+    return result;
+  }
+  try {
+    const response = await apiClient.get<any>(`${MICRO_API_BASE}/submission/contest/${contestId}/problem-stats`, {
+      params: { problem_ids: problemIds },
+    });
+    const payload = response.data;
+    const statsArray: ContestProblemStat[] = Array.isArray(payload?.stats)
+      ? payload.stats
+      : Array.isArray(payload?.data)
+        ? payload.data
+        : Array.isArray(payload)
+          ? payload
+          : [];
+    statsArray.forEach((item) => {
+      const keys = [
+        item.problem_id,
+        item.problemId,
+        item.display_id,
+        item.displayId,
+      ];
+      keys.forEach((k) => {
+        const num = Number(k);
+        if (Number.isFinite(num)) {
+          result.set(num, item);
+        }
+      });
+    });
+  } catch (error) {
+    console.error('Failed to fetch contest problem stats', error);
+  }
+  return result;
+};
+
+const fetchContestUserScores = async (contestId: number): Promise<Map<number, ContestUserScore>> => {
+  const result = new Map<number, ContestUserScore>();
+  if (!MICRO_API_BASE || contestId <= 0) {
+    return result;
+  }
+  try {
+    const response = await apiClient.get<any>(`${MICRO_API_BASE}/submission/contest/${contestId}/scores`);
+    const payload = response.data;
+    const scores: ContestUserScore[] = Array.isArray(payload?.scores)
+      ? payload.scores
+      : Array.isArray(payload?.data)
+        ? payload.data
+        : Array.isArray(payload)
+          ? payload
+          : [];
+    scores.forEach((item) => {
+      const uid = Number(item.user_id ?? item.userId);
+      if (Number.isFinite(uid)) {
+        result.set(uid, item);
+      }
+    });
+  } catch (error) {
+    console.error('Failed to fetch contest user scores', error);
+  }
+  return result;
 };
 
 const mapContest = (raw: any): Contest => ({
@@ -165,7 +253,67 @@ export const contestService = {
       throw new Error(response.message || '문제 목록을 불러오지 못했습니다.');
     }
 
-    return (response.data || []).map(mapProblem);
+    const problems = (response.data || []).map(mapProblem);
+    const problemIds = problems
+      .map((item) => {
+        const candidates = [item.id, (item as any)._id, item.displayId];
+        for (const candidate of candidates) {
+          const num = Number(candidate);
+          if (Number.isFinite(num)) return num;
+        }
+        return null;
+      })
+      .filter((value): value is number => Number.isFinite(value));
+
+    const statMap = await fetchContestProblemStats(contestId, problemIds);
+
+    return problems.map((problem) => {
+      const statKeyCandidates = [
+        problem.id,
+        Number((problem as any)._id),
+        Number(problem.displayId),
+      ].filter((v) => Number.isFinite(v)) as number[];
+      const stat =
+        statKeyCandidates
+          .map((key) => statMap.get(key))
+          .find((entry) => entry !== undefined);
+      if (!stat) {
+        return problem;
+      }
+      const submissionCountRaw =
+        stat.submission_count ??
+        stat.submissionCount ??
+        problem.submissionNumber ??
+        0;
+      const solvedUsersRaw =
+        stat.solved_user_count ??
+        stat.solvedUserCount ??
+        problem.acceptedNumber ??
+        0;
+      const attemptUsersRaw =
+        stat.attempt_user_count ??
+        stat.attemptUserCount ??
+        0;
+
+      const submissionCount = Number.isFinite(Number(submissionCountRaw)) ? Number(submissionCountRaw) : 0;
+      const solvedUsers = Number.isFinite(Number(solvedUsersRaw)) ? Number(solvedUsersRaw) : 0;
+      const attemptUsers = Number.isFinite(Number(attemptUsersRaw)) ? Number(attemptUsersRaw) : 0;
+
+      const accuracyFromPayload = Number(stat.accuracy);
+      const accuracy = Number.isFinite(accuracyFromPayload)
+        ? accuracyFromPayload
+        : (attemptUsers > 0 ? solvedUsers / attemptUsers : 0);
+
+      return {
+        ...problem,
+        submissionNumber: submissionCount,
+        acceptedNumber: solvedUsers,
+        contestSubmissionNumber: submissionCount,
+        contestAttemptUserNumber: attemptUsers,
+        contestSolvedUserNumber: solvedUsers,
+        contestAccuracy: accuracy,
+      };
+    });
   },
 
   verifyContestPassword: async (contestId: number, password: string): Promise<boolean> => {
@@ -193,6 +341,7 @@ export const contestService = {
     contestId: number,
     params?: { limit?: number; offset?: number },
   ): Promise<{ results: ContestRankEntry[]; total: number }> => {
+    const scoreMapPromise = fetchContestUserScores(contestId);
     const query = {
       contest_id: contestId,
       limit: params?.limit ?? 50,
@@ -221,15 +370,29 @@ export const contestService = {
       submissionInfo: raw.submission_info ?? raw.submissionInfo,
     })) as ContestRankEntry[];
 
+    // Overlay micro-service score if available (non-blocking fetch awaited below)
+    const scoreMap = await scoreMapPromise;
+    const merged = entries.map((entry) => {
+      const micro = entry.user?.id != null ? scoreMap.get(entry.user.id) : undefined;
+      if (!micro) return entry;
+      const totalScore = Number(micro.total_score ?? micro.totalScore);
+      const solvedProblems = Number(micro.solved_problems ?? micro.solvedProblems);
+      return {
+        ...entry,
+        totalScore: Number.isFinite(totalScore) ? totalScore : entry.totalScore,
+        acceptedNumber: Number.isFinite(solvedProblems) ? solvedProblems : entry.acceptedNumber,
+      };
+    });
+
     return {
-      results: entries,
-      total: data.total ?? entries.length,
+      results: merged,
+      total: data.total ?? merged.length,
     };
   },
 
   getContestSubmissions: async (
     contestId: number,
-    params?: { limit?: number; offset?: number; userId?: number },
+    params?: { limit?: number; offset?: number; userId?: number; username?: string; problemId?: number | string },
   ): Promise<{ data: SubmissionListItem[]; total: number }> => {
     const limit = params?.limit && params.limit > 0 ? params.limit : 500;
     const offset = params?.offset && params.offset >= 0 ? params.offset : 0;
@@ -240,6 +403,12 @@ export const contestService = {
     };
     if (params?.userId != null) {
       query.user_id = params.userId;
+    }
+    if (params?.username) {
+      query.username = params.username;
+    }
+    if (params?.problemId != null) {
+      query.problem_id = params.problemId;
     }
 
     const response = await api.get<any>('/contest_submissions', query);

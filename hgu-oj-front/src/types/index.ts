@@ -43,6 +43,11 @@ export interface Problem {
   totalScore?: number;
   visible?: boolean;
   isPublic?: boolean;
+  // Contest-specific stats (optional)
+  contestSubmissionNumber?: number;
+  contestSolvedUserNumber?: number;
+  contestAttemptUserNumber?: number;
+  contestAccuracy?: number;
 }
 
 // 제출 관련 타입
