@@ -272,11 +272,15 @@ class GoogleOAuthCallbackAPI(APIView):
             idinfo = id_token.verify_oauth2_token(id_token_value, requests.Request(), client_id)
             email = idinfo.get("email")
             name = idinfo.get("name")
-
+            picture = idinfo.get("picture")
             if not email:
                 return self.error("Email not found in token")
 
             email = email.lower()
+            domain = email.split("@")[-1]
+            if domain not in ["handong.edu", "handong.ac.kr"]:
+                return self.error("Only handong.edu and handong.ac.kr emails are allowed")
+
             name = name.lower()
 
             # check user exist
@@ -289,7 +293,10 @@ class GoogleOAuthCallbackAPI(APIView):
                     name = name + "_" + rand_str(4)
                 # create user and user profile
                 user = User.objects.create(username=name, email=email)
-                UserProfile.objects.create(user=user)
+                profile = UserProfile.objects.create(user=user)
+                if picture:
+                    profile.avatar = picture
+                    profile.save()
                 created = True
 
             # create session

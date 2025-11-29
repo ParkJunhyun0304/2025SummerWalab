@@ -11,6 +11,7 @@ import { ContestListPage } from './pages/ContestListPage';
 import { ContestDetailPage } from './pages/ContestDetailPage';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
+import OAuthCallbackPage from './pages/OAuthCallbackPage';
 import { NavBar } from './components/organisms/NavBar';
 import { AdminPage } from './pages/AdminPage';
 import MyPage from './pages/MyPage';
@@ -26,6 +27,7 @@ const AppShell: React.FC = () => {
         <Route path="/" element={<HomePage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
+        <Route path="/oauth/callback" element={<OAuthCallbackPage />} />
         <Route path="/problems" element={<ProblemListPage />} />
         <Route path="/problems/:id" element={<ProblemDetailPage />} />
         <Route path="/workbooks" element={<WorkbookListPage />} />
