@@ -84,6 +84,7 @@ export interface Contest {
   realTimeRank?: boolean;
   now?: string;
   problemCount?: number;
+  requiresApproval?: boolean;
 }
 
 export interface ContestAnnouncement {
@@ -386,6 +387,7 @@ export interface AdminContest extends Contest {
   real_time_rank: boolean;
   allowed_ip_ranges: string[];
   status?: string;
+  requires_approval?: boolean;
 }
 
 export interface AdminContestListResponse {

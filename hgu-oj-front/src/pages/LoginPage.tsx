@@ -10,7 +10,7 @@ const LoginPage: React.FC = () => {
   const { login, isLoading, error, clearError, isAuthenticated } = useAuthStore();
 
   // Registration disabled flag
-  const registrationDisabled = false;
+  const registrationDisabled = true;
 
   const [formData, setFormData] = useState({
     username: '',

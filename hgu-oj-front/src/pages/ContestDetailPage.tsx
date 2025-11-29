@@ -101,6 +101,7 @@ export const ContestDetailPage: React.FC = () => {
     contest,
     contestPhase,
     requiresPassword,
+    requiresApproval: contest?.requiresApproval ?? false,
     isAuthenticated,
     hasContestAdminOverride,
     onProtectedAccessGranted: () => protectedContentRef.current(),
