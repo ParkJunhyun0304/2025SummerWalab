@@ -1,104 +1,446 @@
-import React from 'react';
-import type { SubmissionGroup } from '../hooks/useContestSubmissionDetails';
-import { formatDateTime } from '../../../utils/date';
-import { getJudgeResultLabel } from '../utils/judgeResult';
+import React, { useMemo, useState } from 'react';
+import type { ContestRankEntry, Problem } from '../../../types';
+import { contestService } from '../../../services/contestService';
+import { submissionService } from '../../../services/submissionService';
+import type { SubmissionDetail, SubmissionListItem } from '../../../services/submissionService';
+
+type ProblemStatus = { status: 'ac' | 'tried' | 'unknown'; errors?: number; acTime?: number };
+type CaseEntry = { id: string; result?: number | string; success: boolean };
 
 interface ContestSubmissionDetailsTabProps {
+  contestId: number;
   isAdminUser: boolean;
-  submissionGroups: SubmissionGroup[];
-  submissionsLoading: boolean;
-  submissionsError: unknown;
-  onSubmissionClick: (submissionId: number | string | undefined) => void;
+  rankEntries: ContestRankEntry[];
+  problems?: Problem[];
 }
 
 export const ContestSubmissionDetailsTab: React.FC<ContestSubmissionDetailsTabProps> = ({
+  contestId,
   isAdminUser,
-  submissionGroups,
-  submissionsLoading,
-  submissionsError,
-  onSubmissionClick,
+  rankEntries,
+  problems = [],
 }) => {
+  const [mode, setMode] = useState<'scoreboard' | 'submissions'>('scoreboard');
+  const [selectedUser, setSelectedUser] = useState<{ id: number; username: string } | null>(null);
+  const [selectedProblem, setSelectedProblem] = useState<Problem | null>(null);
+  const [submissions, setSubmissions] = useState<SubmissionListItem[]>([]);
+  const [submissionsLoading, setSubmissionsLoading] = useState(false);
+  const [submissionsError, setSubmissionsError] = useState<string | null>(null);
+  const [codeModal, setCodeModal] = useState<{ open: boolean; code?: string; loading: boolean; error?: string }>({
+    open: false,
+    loading: false,
+  });
+  const [caseModal, setCaseModal] = useState<{
+    open: boolean;
+    loading: boolean;
+    error?: string;
+    cases?: CaseEntry[];
+    submissionId?: number | string;
+  }>({
+    open: false,
+    loading: false,
+  });
+
+  const formatKSTDateTime = (value: unknown): string => {
+    if (typeof value !== 'string') return '-';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return value;
+    return new Intl.DateTimeFormat('ko-KR', {
+      timeZone: 'Asia/Seoul',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    }).format(date);
+  };
+
+  const parseTestCases = (detail: SubmissionDetail | null | undefined): CaseEntry[] => {
+    const data = (detail as SubmissionDetail & { info?: { data?: unknown } } | null | undefined)?.info?.data;
+    if (!Array.isArray(data)) return [];
+
+    return data
+      .map<CaseEntry | null>((item, idx) => {
+        if (item === null || typeof item !== 'object') return null;
+        const record = item as Record<string, unknown>;
+        const rawId = record.test_case ?? record.test_case_id ?? idx + 1;
+        const id = rawId != null ? String(rawId) : String(idx + 1);
+        const rawResult = record.result ?? record.error ?? record.status;
+        const numeric = typeof rawResult === 'number' ? rawResult : Number(rawResult);
+        const success =
+          (typeof rawResult === 'string' && ['ac', 'accepted', 'success'].includes(rawResult.toLowerCase())) ||
+          numeric === 0;
+        return { id, result: rawResult as number | string | undefined, success };
+      })
+      .filter((item): item is CaseEntry => item !== null);
+  };
+
+  const renderResultLabel = (status: unknown): string => {
+    // Normalize numeric codes: 0 => 성공, others => 실패
+    if (typeof status === 'number') {
+      return status === 0 ? '성공' : '실패';
+    }
+    if (typeof status === 'string') {
+      const trimmed = status.trim().toLowerCase();
+      if (trimmed === '0') return '성공';
+      // Known success tokens
+      if (['ac', 'accepted', 'success'].includes(trimmed)) return '성공';
+      // Known failure tokens
+      if (
+        ['wa', 'wrong answer', 'tle', 'mle', 're', 'ce', 'runtime error', 'compile error', 'fail', 'failed'].includes(trimmed)
+      ) {
+        return '실패';
+      }
+      // Pending/other
+      if (['pending', 'judging', 'queue', 'processing'].includes(trimmed)) return '채점 중';
+    }
+    return '알 수 없음';
+  };
+
+  const problemList = useMemo(() => {
+    const sorted = [...(problems ?? [])].sort((a, b) => {
+      const da = String(a.displayId ?? a.id ?? '').toLowerCase();
+      const db = String(b.displayId ?? b.id ?? '').toLowerCase();
+      return da.localeCompare(db, undefined, { numeric: true, sensitivity: 'base' });
+    });
+    return sorted;
+  }, [problems]);
+
+  const scoreboardEntries = useMemo<Array<ContestRankEntry & { problemStatuses: Array<ProblemStatus & { score?: number }> }>>(() => {
+    return rankEntries.map((entry) => {
+      const infoMap = entry.submissionInfo as Record<string, unknown> | undefined;
+      const problemStatuses = problemList.map((problem) => {
+        const pid = problem.id;
+        if (!pid) return { status: 'unknown' as const };
+        const info = infoMap?.[pid] ?? infoMap?.[String(pid)];
+        let status: ProblemStatus['status'] = 'unknown';
+        if (info) {
+          if (typeof info === 'object') {
+            const record = info as Record<string, unknown>;
+            const isAc = record.is_ac === true || record.is_ac === 'true';
+            status = isAc ? 'ac' : 'tried';
+          } else {
+            const numeric = Number(info);
+            status = Number.isFinite(numeric) && numeric > 0 ? 'tried' : 'unknown';
+          }
+        }
+        return { status };
+      });
+
+      return {
+        ...entry,
+        problemStatuses,
+      };
+    });
+  }, [rankEntries, problemList]);
+
+  const handleCellClick = async (userId: number, username: string, problem: Problem) => {
+    setSelectedUser({ id: userId, username });
+    setSelectedProblem(problem);
+    setMode('submissions');
+    setSubmissionsLoading(true);
+    setSubmissionsError(null);
+
+    try {
+      const resp = await contestService.getContestSubmissions(contestId, {
+        userId,
+        username,
+        // Contest submissions API expects the problem's display/_id, not the PK
+        problemId: problem.displayId ?? problem._id ?? problem.id,
+      });
+      setSubmissions(resp.data || []);
+    } catch (error) {
+      setSubmissionsError(error instanceof Error ? error.message : '제출을 불러오지 못했습니다.');
+    } finally {
+      setSubmissionsLoading(false);
+    }
+  };
+
+  const handleOpenCode = async (submissionId: number | string | undefined) => {
+    if (!submissionId) return;
+    setCodeModal({ open: true, loading: true });
+    try {
+      const detail = await submissionService.getSubmission(submissionId);
+      const code = detail.code;
+      setCodeModal({ open: true, loading: false, code });
+    } catch (error) {
+      setCodeModal({
+        open: true,
+        loading: false,
+        error: error instanceof Error ? error.message : '코드를 불러오지 못했습니다.',
+      });
+    }
+  };
+
+  const handleOpenCaseModal = async (submissionId: number | string | undefined) => {
+    if (!submissionId) return;
+    setCaseModal({ open: true, loading: true, submissionId });
+    try {
+      const detail = await submissionService.getSubmission(submissionId);
+      const cases = parseTestCases(detail);
+      setCaseModal({
+        open: true,
+        loading: false,
+        cases,
+        submissionId,
+        error: cases.length === 0 ? '테스트 케이스 정보를 찾을 수 없습니다.' : undefined,
+      });
+    } catch (error) {
+      setCaseModal({
+        open: true,
+        loading: false,
+        submissionId,
+        error: error instanceof Error ? error.message : '테스트 케이스를 불러오지 못했습니다.',
+      });
+    }
+  };
+
   if (!isAdminUser) {
     return <div className="text-sm text-gray-600">관리자만 제출 상세정보를 확인할 수 있습니다.</div>;
   }
 
-  if (submissionsLoading) {
+  if (mode === 'submissions' && selectedUser && selectedProblem) {
     return (
-      <div className="flex justify-center py-10">
-        <div className="h-10 w-10 animate-spin rounded-full border-b-2 border-blue-600" />
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <button
+            type="button"
+            onClick={() => setMode('scoreboard')}
+            className="px-4 py-2 rounded-md border border-blue-200 bg-blue-50 text-sm font-semibold text-blue-700 hover:bg-blue-100"
+          >
+            목록으로 돌아가기
+          </button>
+          <div className="text-sm font-semibold text-gray-800">
+            {selectedUser.username}의 제출기록
+          </div>
+        </div>
+        {submissionsLoading ? (
+          <div className="h-32 flex items-center justify-center">
+            <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-blue-600" />
+          </div>
+        ) : submissionsError ? (
+          <div className="text-sm text-red-600">{submissionsError}</div>
+        ) : (
+          <div className="overflow-hidden rounded-lg border border-gray-200">
+            <table className="min-w-full divide-y divide-gray-200 text-sm">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-4 py-3 text-left font-semibold text-gray-700">결과</th>
+                  <th className="px-4 py-3 text-left font-semibold text-gray-700">언어</th>
+                  <th className="px-4 py-3 text-left font-semibold text-gray-700">제출 시각</th>
+                  <th className="px-4 py-3 text-center font-semibold text-gray-700">코드</th>
+                  <th className="px-4 py-3 text-center font-semibold text-gray-700">테스트 결과</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200">
+                {submissions.map((item) => {
+                  const createdAt =
+                    'create_time' in item && typeof item.create_time === 'string'
+                      ? item.create_time
+                      : 'createTime' in item && typeof (item as SubmissionListItem & { createTime?: string }).createTime === 'string'
+                        ? (item as SubmissionListItem & { createTime?: string }).createTime
+                        : undefined;
+                  const submissionId = item.id ?? item.submissionId;
+                  const statusRaw = item.status ?? item.result ?? '-';
+                  const statusText = renderResultLabel(statusRaw);
+                  return (
+                    <tr key={String(submissionId ?? Math.random())}>
+                      <td className="px-4 py-2 text-gray-800">{statusText}</td>
+                      <td className="px-4 py-2 text-gray-800">
+                        {item.language ??
+                          ('language_name' in item && typeof (item as SubmissionListItem & { language_name?: string }).language_name === 'string'
+                            ? (item as SubmissionListItem & { language_name?: string }).language_name
+                            : '-')}
+                      </td>
+                      <td className="px-4 py-2 text-gray-600">{formatKSTDateTime(createdAt)}</td>
+                      <td className="px-4 py-2 text-center">
+                        <button
+                          type="button"
+                          onClick={() => handleOpenCode(submissionId)}
+                          className="px-3 py-1 rounded-md border border-gray-300 text-sm text-gray-700 hover:bg-gray-50 bg-white"
+                        >
+                          소스 보기
+                        </button>
+                      </td>
+                      <td className="px-4 py-2 text-center">
+                        <button
+                          type="button"
+                          onClick={() => handleOpenCaseModal(submissionId)}
+                          className="px-3 py-1 rounded-md border border-indigo-200 text-sm text-indigo-700 hover:bg-indigo-50 bg-indigo-50"
+                        >
+                          케이스 결과
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+                {submissions.length === 0 && (
+                  <tr>
+                    <td colSpan={5} className="px-4 py-6 text-center text-gray-500">
+                      제출 기록이 없습니다.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {codeModal.open && (
+          <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={() => setCodeModal({ open: false, loading: false })}>
+            <div
+              className="bg-slate-900 text-slate-100 rounded-lg shadow-2xl max-w-4xl w-full max-h-[80vh] overflow-auto p-4 border border-slate-700"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex justify-end mb-2">
+                <button
+                  type="button"
+                  onClick={() => setCodeModal({ open: false, loading: false })}
+                  className="text-sm text-slate-300 hover:text-white"
+                >
+                  닫기
+                </button>
+              </div>
+              {codeModal.loading ? (
+                <div className="h-24 flex items-center justify-center">
+                  <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-blue-600" />
+                </div>
+              ) : codeModal.error ? (
+                <div className="text-sm text-red-400">{codeModal.error}</div>
+              ) : (
+                <pre className="whitespace-pre-wrap text-xs bg-slate-800 text-slate-100 rounded-md p-3 border border-slate-700">
+                  {codeModal.code ?? '코드가 없습니다.'}
+                </pre>
+              )}
+            </div>
+          </div>
+        )}
+
+        {caseModal.open && (
+          <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={() => setCaseModal({ open: false, loading: false })}>
+            <div
+              className="bg-white rounded-lg shadow-xl max-w-sm w-full max-h-[80vh] overflow-hidden"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
+                <div className="text-sm font-semibold text-gray-800">테스트 케이스 결과</div>
+                <button
+                  type="button"
+                  onClick={() => setCaseModal({ open: false, loading: false })}
+                  className="text-sm text-gray-500 hover:text-gray-700"
+                >
+                  닫기
+                </button>
+              </div>
+              <div className="px-5 py-4 max-h-[70vh] overflow-auto">
+                {caseModal.loading ? (
+                  <div className="h-24 flex items-center justify-center">
+                    <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-blue-600" />
+                  </div>
+                ) : caseModal.error ? (
+                  <div className="text-sm text-red-600">{caseModal.error}</div>
+                ) : (
+                  <div className="space-y-3">
+                    <div className="grid grid-cols-2 items-center text-xs font-semibold text-gray-600 px-1">
+                      <div className="text-center">케이스</div>
+                      <div className="text-center">결과</div>
+                    </div>
+                    {(caseModal.cases ?? []).map((tc) => {
+                      const success = tc.success;
+                      const rowTone = success ? 'bg-green-50 text-green-800 border-green-200' : 'bg-rose-50 text-rose-800 border-rose-200';
+                      const label = success ? '성공' : '실패';
+                      return (
+                        <div
+                          key={tc.id}
+                          className={`grid grid-cols-2 items-center place-items-center rounded-md border px-1 py-2 text-sm ${rowTone}`}
+                        >
+                          <div className="font-semibold text-center">{tc.id}</div>
+                          <div className="font-semibold text-center">{label}</div>
+                        </div>
+                      );
+                    })}
+                    {(caseModal.cases ?? []).length === 0 && (
+                      <div className="text-sm text-gray-600">테스트 케이스 정보를 확인할 수 없습니다.</div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
 
-  if (submissionsError) {
-    return <div className="text-sm text-red-600">제출 목록을 불러오는 중 오류가 발생했습니다.</div>;
-  }
-
-  if (!submissionGroups.length) {
-    return <div className="text-sm text-gray-600">제출 기록이 없습니다.</div>;
-  }
-
   return (
-    <div className="space-y-6">
-      {submissionGroups.map((group) => (
-        <div key={group.userId} className="rounded-xl border border-gray-200 bg-white shadow-sm">
-          <div className="border-b border-gray-200 px-4 py-3">
-            <h3 className="text-lg font-semibold text-gray-800">{group.username ?? `User ${group.userId}`}</h3>
+    <div className="bg-white rounded-lg shadow-sm overflow-hidden">
+      <div className="overflow-x-auto">
+        <div
+          className="min-w-full"
+          style={{ minWidth: `${360 + problemList.length * 140}px` }}
+        >
+          <div
+            className="grid items-center border-b border-gray-200 bg-gray-50 px-6 py-4"
+            style={{ gridTemplateColumns: `80px 180px 120px 120px repeat(${problemList.length}, minmax(140px, 1fr))` }}
+          >
+            <div className="text-center text-sm font-medium text-gray-500 uppercase tracking-wider">순위</div>
+            <div className="text-sm font-medium text-gray-500 uppercase tracking-wider">유저</div>
+            <div className="text-center text-sm font-medium text-gray-500 uppercase tracking-wider">해결</div>
+            <div className="text-center text-sm font-medium text-gray-500 uppercase tracking-wider">점수</div>
+            {problemList.map((problem) => (
+              <div key={problem.id} className="text-center text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                {problem.displayId ?? problem.id}
+              </div>
+            ))}
           </div>
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200 text-left text-sm">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-3 py-2 font-semibold text-gray-600">제출 ID</th>
-                  <th className="px-3 py-2 font-semibold text-gray-600">문제 ID</th>
-                  <th className="px-3 py-2 font-semibold text-gray-600">결과</th>
-                  <th className="px-3 py-2 font-semibold text-gray-600">언어</th>
-                  <th className="px-3 py-2 font-semibold text-gray-600">제출 시각</th>
-                  <th className="px-3 py-2 font-semibold text-gray-600">코드</th>
-                </tr>
-              </thead>
-              <tbody>
-                {group.submissions
-                  .slice()
-                  .sort((a, b) => {
-                    const ta = new Date((a.create_time ?? a.createTime) || 0).getTime();
-                    const tb = new Date((b.create_time ?? b.createTime) || 0).getTime();
-                    return ta - tb;
-                  })
-                  .map((submission) => {
-                    const submissionId = submission.id ?? submission.submissionId;
-                    const problemId = submission.problem_id ?? submission.problemId ?? submission.problem ?? '-';
-                    const language = submission.language ?? submission.language_name ?? '-';
-                    const submittedAt = submission.create_time ?? submission.createTime ?? '';
-                    const statusValue = submission.result ?? submission.status;
-                    const resultLabel = getJudgeResultLabel(statusValue);
+          <div className="divide-y divide-gray-200">
+            {scoreboardEntries.map((entry, index) => (
+              <div key={entry.id ?? index} className="px-6 py-4 hover:bg-gray-50 transition-colors">
+                <div
+                  className="grid items-center"
+                  style={{ gridTemplateColumns: `80px 180px 120px 120px repeat(${problemList.length}, minmax(140px, 1fr))` }}
+                >
+                  <div className="text-center font-semibold text-gray-800">{index + 1}</div>
+                  <div>
+                    <div className="text-sm font-medium text-gray-900">{entry.user.username}</div>
+                    {entry.user.realName && <div className="text-xs text-gray-500">{entry.user.realName}</div>}
+                  </div>
+                  <div className="text-center text-sm text-gray-700">{entry.acceptedNumber ?? 0}</div>
+                  <div className="text-center text-sm text-gray-700">{entry.totalScore ?? 0}</div>
+                  {problemList.map((problem, pIdx) => {
+                    const info = entry.problemStatuses ? entry.problemStatuses[pIdx] : null;
+                    const status = info?.status ?? 'unknown';
+                    const bg =
+                      status === 'ac'
+                        ? 'bg-green-100 text-green-700'
+                        : status === 'tried'
+                          ? 'bg-amber-50 text-amber-700'
+                          : 'bg-gray-50 text-gray-400';
+                    const labelScore = info?.score;
+                    const label = labelScore != null ? `${labelScore}` : status === 'ac' ? 'AC' : status === 'tried' ? 'T' : '-';
+                    const handleClick = () => {
+                      if (entry.user?.id) {
+                        handleCellClick(entry.user.id, entry.user.username, problem);
+                      }
+                    };
                     return (
-                      <tr key={String(submissionId)} className="border-b border-gray-200">
-                        <td className="px-3 py-2 text-gray-700">{submissionId}</td>
-                        <td className="px-3 py-2 text-gray-700">{problemId}</td>
-                        <td className="px-3 py-2 text-gray-700">{resultLabel}</td>
-                        <td className="px-3 py-2 text-gray-700">{language}</td>
-                        <td className="px-3 py-2 text-gray-700">{submittedAt ? formatDateTime(submittedAt) : '-'}</td>
-                        <td className="px-3 py-2 text-gray-700">
-                          <button
-                            type="button"
-                            className="rounded-md bg-blue-600 px-3 py-1 text-xs font-semibold text-white shadow-sm transition hover:bg-blue-700"
-                            onClick={(event) => {
-                              event.preventDefault();
-                              onSubmissionClick(submissionId);
-                            }}
-                          >
-                            소스 보기
-                          </button>
-                        </td>
-                      </tr>
+                      <button
+                        key={problem.id}
+                        type="button"
+                        onClick={handleClick}
+                        className={`w-full h-full px-2 py-2 text-xs font-semibold rounded ${bg} transition-colors hover:opacity-90`}
+                      >
+                        {label}
+                      </button>
                     );
                   })}
-              </tbody>
-            </table>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
-      ))}
+      </div>
     </div>
   );
 };

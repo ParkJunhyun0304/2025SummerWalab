@@ -10,14 +10,12 @@ import { useContestAccessState } from '../features/contestDetail/hooks/useContes
 import { useContestAnnouncementsManager } from '../features/contestDetail/hooks/useContestAnnouncementsManager';
 import { useContestProblemsController } from '../features/contestDetail/hooks/useContestProblemsController';
 import { useContestUserManagement } from '../features/contestDetail/hooks/useContestUserManagement';
-import { useContestSubmissionDetails } from '../features/contestDetail/hooks/useContestSubmissionDetails';
 import { ContestOverviewTab } from '../features/contestDetail/components/ContestOverviewTab';
 import { ContestAnnouncementsSection } from '../features/contestDetail/components/ContestAnnouncementsSection';
 import { ContestProblemsTab } from '../features/contestDetail/components/ContestProblemsTab';
 import { ContestRankTab } from '../features/contestDetail/components/ContestRankTab';
 import { ContestUserManagementTab } from '../features/contestDetail/components/ContestUserManagementTab';
 import { ContestSubmissionDetailsTab } from '../features/contestDetail/components/ContestSubmissionDetailsTab';
-import { ContestSubmissionModal } from '../features/contestDetail/components/ContestSubmissionModal';
 import type { ContestRankEntry } from '../types';
 import type { ContestTab } from '../features/contestDetail/types';
 
@@ -141,7 +139,7 @@ export const ContestDetailPage: React.FC = () => {
     canFetch: canFetchAnnouncements,
   });
 
-  const shouldLoadRank = canViewProtectedContent && (activeTab === 'rank' || activeTab === 'problems');
+  const shouldLoadRank = canViewProtectedContent && (activeTab === 'rank' || activeTab === 'problems' || activeTab === 'submission-details');
   const {
     data: rankData,
     isLoading: rankLoading,
@@ -192,9 +190,6 @@ export const ContestDetailPage: React.FC = () => {
       userManagement.setFeedback(null);
     }
   }, [activeTab, userManagement]);
-
-  const shouldLoadSubmissionDetails = isAdminUser && activeTab === 'submission-details';
-  const submissionDetails = useContestSubmissionDetails({ contestId, shouldLoad: shouldLoadSubmissionDetails });
 
   const announcementsNode = canFetchAnnouncements ? <ContestAnnouncementsSection canManage={canManageAnnouncements} manager={announcementManager} /> : null;
 
@@ -437,6 +432,7 @@ export const ContestDetailPage: React.FC = () => {
                 rankLoading={rankLoading}
                 rankError={rankError}
                 entries={rankEntries}
+                ruleType={contest?.ruleType}
               />
             )}
 
@@ -454,25 +450,16 @@ export const ContestDetailPage: React.FC = () => {
 
             {activeTab === 'submission-details' && (
               <ContestSubmissionDetailsTab
+                contestId={contestId}
                 isAdminUser={isAdminUser}
-                submissionGroups={submissionDetails.submissionGroups}
-                submissionsLoading={submissionDetails.submissionsLoading}
-                submissionsError={submissionDetails.submissionsError}
-                onSubmissionClick={submissionDetails.modalState.handleSubmissionClick}
+                rankEntries={rankEntries}
+                problems={problemsController.problems}
               />
             )}
           </div>
         </div>
       </div>
 
-      <ContestSubmissionModal
-        isOpen={submissionDetails.modalState.isModalOpen}
-        loading={submissionDetails.modalState.modalLoading}
-        error={submissionDetails.modalState.modalError}
-        submission={submissionDetails.modalState.selectedSubmissionDetail}
-        submittedAt={submissionDetails.modalState.selectedSubmissionCreatedAt}
-        onClose={submissionDetails.modalState.closeModal}
-      />
     </>
   );
 };

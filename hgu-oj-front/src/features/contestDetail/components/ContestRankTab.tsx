@@ -14,6 +14,7 @@ interface ContestRankTabProps {
   rankLoading: boolean;
   rankError: unknown;
   entries: ContestRankEntry[];
+  ruleType?: string;
 }
 
 export const ContestRankTab: React.FC<ContestRankTabProps> = ({
@@ -23,6 +24,7 @@ export const ContestRankTab: React.FC<ContestRankTabProps> = ({
   rankLoading,
   rankError,
   entries,
+  ruleType,
 }) => {
   if (lockState.locked) {
     if (lockState.reason === 'verifying') {
@@ -52,5 +54,5 @@ export const ContestRankTab: React.FC<ContestRankTabProps> = ({
     return <div className="text-sm text-red-600">랭크 정보를 불러오는 중 오류가 발생했습니다.</div>;
   }
 
-  return <ContestRankTable entries={entries} />;
+  return <ContestRankTable entries={entries} ruleType={ruleType} />;
 };
