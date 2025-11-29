@@ -7,7 +7,10 @@ import { Card } from '../components/atoms/Card';
 const RegisterPage: React.FC = () => {
   const navigate = useNavigate();
   const { isAuthenticated } = useAuthStore();
-  
+
+  // Registration disabled flag
+  const registrationDisabled = true;
+
   const [formData, setFormData] = useState({
     username: '',
     email: '',
@@ -15,7 +18,7 @@ const RegisterPage: React.FC = () => {
     confirmPassword: '',
     captcha: '',
   });
-  
+
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isLoading, setIsLoading] = useState(false);
   const [captchaImage, setCaptchaImage] = useState<string>('');
@@ -30,7 +33,9 @@ const RegisterPage: React.FC = () => {
 
   // 캡차 이미지 로드
   useEffect(() => {
-    loadCaptcha();
+    if (!registrationDisabled) {
+      loadCaptcha();
+    }
   }, []);
 
   const loadCaptcha = async () => {
@@ -39,7 +44,7 @@ const RegisterPage: React.FC = () => {
       const response = await fetch('/api/captcha', {
         credentials: 'include',
       });
-      
+
       if (response.ok) {
         const result = await response.json();
         if (result.error === null && result.data) {
@@ -64,7 +69,7 @@ const RegisterPage: React.FC = () => {
       ...prev,
       [name]: value,
     }));
-    
+
     // 입력 시 해당 필드의 에러 클리어
     if (errors[name]) {
       setErrors(prev => ({
@@ -118,13 +123,13 @@ const RegisterPage: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!validateForm()) {
       return;
     }
 
     setIsLoading(true);
-    
+
     try {
       const response = await fetch('/api/register', {
         method: 'POST',
@@ -141,7 +146,7 @@ const RegisterPage: React.FC = () => {
       });
 
       const result = await response.json();
-      
+
       if (result.error) {
         if (result.error === 'invalid-captcha') {
           setErrors({ captcha: '캡차가 올바르지 않습니다.' });
@@ -176,174 +181,190 @@ const RegisterPage: React.FC = () => {
             HGU Online Judge에 가입하세요
           </p>
         </div>
-        
+
         <Card className="mt-8">
-          <form className="space-y-6" onSubmit={handleSubmit}>
-            {errors.general && (
-              <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-md">
-                {errors.general}
+          {registrationDisabled ? (
+            <div className="text-center py-8">
+              <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-yellow-100 mb-4">
+                <svg className="h-6 w-6 text-yellow-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
               </div>
-            )}
-
-            <div>
-              <label htmlFor="username" className="block text-sm font-medium text-gray-700">
-                사용자명 *
-              </label>
-              <input
-                id="username"
-                name="username"
-                type="text"
-                required
-                value={formData.username}
-                onChange={handleInputChange}
-                className={`mt-1 w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
-                  errors.username ? 'border-red-500' : 'border-gray-300'
-                }`}
-                placeholder="사용자명을 입력하세요"
-              />
-              {errors.username && (
-                <p className="mt-1 text-sm text-red-500">{errors.username}</p>
-              )}
+              <h3 className="text-lg font-medium text-gray-900 mb-2">회원가입 일시 중단</h3>
+              <p className="text-gray-500 mb-6">
+                현재 시스템 점검 및 업데이트로 인해<br />
+                회원가입이 일시적으로 중단되었습니다.<br />
+                관리자에게 문의해주세요.
+              </p>
+              <Link to="/login">
+                <Button className="w-full">
+                  로그인 페이지로 돌아가기
+                </Button>
+              </Link>
             </div>
-
-            <div>
-              <label htmlFor="email" className="block text-sm font-medium text-gray-700">
-                이메일 *
-              </label>
-              <input
-                id="email"
-                name="email"
-                type="email"
-                required
-                value={formData.email}
-                onChange={handleInputChange}
-                className={`mt-1 w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
-                  errors.email ? 'border-red-500' : 'border-gray-300'
-                }`}
-                placeholder="이메일을 입력하세요"
-              />
-              {errors.email && (
-                <p className="mt-1 text-sm text-red-500">{errors.email}</p>
+          ) : (
+            <form className="space-y-6" onSubmit={handleSubmit}>
+              {errors.general && (
+                <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-md">
+                  {errors.general}
+                </div>
               )}
-            </div>
 
-            <div>
-              <label htmlFor="password" className="block text-sm font-medium text-gray-700">
-                비밀번호 *
-              </label>
-              <input
-                id="password"
-                name="password"
-                type="password"
-                required
-                value={formData.password}
-                onChange={handleInputChange}
-                className={`mt-1 w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
-                  errors.password ? 'border-red-500' : 'border-gray-300'
-                }`}
-                placeholder="비밀번호를 입력하세요"
-              />
-              {errors.password && (
-                <p className="mt-1 text-sm text-red-500">{errors.password}</p>
-              )}
-            </div>
-
-            <div>
-              <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-700">
-                비밀번호 확인 *
-              </label>
-              <input
-                id="confirmPassword"
-                name="confirmPassword"
-                type="password"
-                required
-                value={formData.confirmPassword}
-                onChange={handleInputChange}
-                className={`mt-1 w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
-                  errors.confirmPassword ? 'border-red-500' : 'border-gray-300'
-                }`}
-                placeholder="비밀번호를 다시 입력하세요"
-              />
-              {errors.confirmPassword && (
-                <p className="mt-1 text-sm text-red-500">{errors.confirmPassword}</p>
-              )}
-            </div>
-
-            <div>
-              <label htmlFor="captcha" className="block text-sm font-medium text-gray-700">
-                캡차 *
-              </label>
-              <div className="mt-1 flex space-x-2">
+              <div>
+                <label htmlFor="username" className="block text-sm font-medium text-gray-700">
+                  사용자명 *
+                </label>
                 <input
-                  id="captcha"
-                  name="captcha"
+                  id="username"
+                  name="username"
                   type="text"
                   required
-                  value={formData.captcha}
+                  value={formData.username}
                   onChange={handleInputChange}
-                  className={`flex-1 px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
-                    errors.captcha ? 'border-red-500' : 'border-gray-300'
-                  }`}
-                  placeholder="캡차를 입력하세요"
+                  className={`mt-1 w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${errors.username ? 'border-red-500' : 'border-gray-300'
+                    }`}
+                  placeholder="사용자명을 입력하세요"
                 />
-                <button
-                  type="button"
-                  onClick={loadCaptcha}
-                  disabled={captchaLoading}
-                  className="px-3 py-2 text-sm text-gray-600 hover:text-gray-800 border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {captchaLoading ? '로딩...' : '새로고침'}
-                </button>
-              </div>
-              <div className="mt-2">
-                {captchaLoading ? (
-                  <div className="flex items-center justify-center h-16 border border-gray-300 rounded bg-gray-50">
-                    <span className="text-sm text-gray-500">캡차 로딩 중...</span>
-                  </div>
-                ) : captchaImage ? (
-                  <img
-                    src={captchaImage}
-                    alt="캡차"
-                    className="border border-gray-300 rounded"
-                    style={{ maxHeight: '60px', maxWidth: '200px' }}
-                    onError={() => {
-                      console.error('캡차 이미지 로드 실패');
-                      loadCaptcha(); // 이미지 로드 실패 시 다시 시도
-                    }}
-                  />
-                ) : (
-                  <div className="flex items-center justify-center h-16 border border-gray-300 rounded bg-gray-50">
-                    <span className="text-sm text-gray-500">캡차를 불러오는 중...</span>
-                  </div>
+                {errors.username && (
+                  <p className="mt-1 text-sm text-red-500">{errors.username}</p>
                 )}
               </div>
-              {errors.captcha && (
-                <p className="mt-1 text-sm text-red-500">{errors.captcha}</p>
-              )}
-            </div>
 
-            <div>
-              <Button
-                type="submit"
-                disabled={isLoading}
-                className="w-full"
-              >
-                {isLoading ? '가입 중...' : '회원가입'}
-              </Button>
-            </div>
+              <div>
+                <label htmlFor="email" className="block text-sm font-medium text-gray-700">
+                  이메일 *
+                </label>
+                <input
+                  id="email"
+                  name="email"
+                  type="email"
+                  required
+                  value={formData.email}
+                  onChange={handleInputChange}
+                  className={`mt-1 w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${errors.email ? 'border-red-500' : 'border-gray-300'
+                    }`}
+                  placeholder="이메일을 입력하세요"
+                />
+                {errors.email && (
+                  <p className="mt-1 text-sm text-red-500">{errors.email}</p>
+                )}
+              </div>
 
-            <div className="text-center">
-              <p className="text-sm text-gray-600">
-                이미 계정이 있으신가요?{' '}
-                <Link
-                  to="/login"
-                  className="font-medium text-blue-600 hover:text-blue-500"
+              <div>
+                <label htmlFor="password" className="block text-sm font-medium text-gray-700">
+                  비밀번호 *
+                </label>
+                <input
+                  id="password"
+                  name="password"
+                  type="password"
+                  required
+                  value={formData.password}
+                  onChange={handleInputChange}
+                  className={`mt-1 w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${errors.password ? 'border-red-500' : 'border-gray-300'
+                    }`}
+                  placeholder="비밀번호를 입력하세요"
+                />
+                {errors.password && (
+                  <p className="mt-1 text-sm text-red-500">{errors.password}</p>
+                )}
+              </div>
+
+              <div>
+                <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-700">
+                  비밀번호 확인 *
+                </label>
+                <input
+                  id="confirmPassword"
+                  name="confirmPassword"
+                  type="password"
+                  required
+                  value={formData.confirmPassword}
+                  onChange={handleInputChange}
+                  className={`mt-1 w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${errors.confirmPassword ? 'border-red-500' : 'border-gray-300'
+                    }`}
+                  placeholder="비밀번호를 다시 입력하세요"
+                />
+                {errors.confirmPassword && (
+                  <p className="mt-1 text-sm text-red-500">{errors.confirmPassword}</p>
+                )}
+              </div>
+
+              <div>
+                <label htmlFor="captcha" className="block text-sm font-medium text-gray-700">
+                  캡차 *
+                </label>
+                <div className="mt-1 flex space-x-2">
+                  <input
+                    id="captcha"
+                    name="captcha"
+                    type="text"
+                    required
+                    value={formData.captcha}
+                    onChange={handleInputChange}
+                    className={`flex-1 px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${errors.captcha ? 'border-red-500' : 'border-gray-300'
+                      }`}
+                    placeholder="캡차를 입력하세요"
+                  />
+                  <button
+                    type="button"
+                    onClick={loadCaptcha}
+                    disabled={captchaLoading}
+                    className="px-3 py-2 text-sm text-gray-600 hover:text-gray-800 border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {captchaLoading ? '로딩...' : '새로고침'}
+                  </button>
+                </div>
+                <div className="mt-2">
+                  {captchaLoading ? (
+                    <div className="flex items-center justify-center h-16 border border-gray-300 rounded bg-gray-50">
+                      <span className="text-sm text-gray-500">캡차 로딩 중...</span>
+                    </div>
+                  ) : captchaImage ? (
+                    <img
+                      src={captchaImage}
+                      alt="캡차"
+                      className="border border-gray-300 rounded"
+                      style={{ maxHeight: '60px', maxWidth: '200px' }}
+                      onError={() => {
+                        console.error('캡차 이미지 로드 실패');
+                        loadCaptcha(); // 이미지 로드 실패 시 다시 시도
+                      }}
+                    />
+                  ) : (
+                    <div className="flex items-center justify-center h-16 border border-gray-300 rounded bg-gray-50">
+                      <span className="text-sm text-gray-500">캡차를 불러오는 중...</span>
+                    </div>
+                  )}
+                </div>
+                {errors.captcha && (
+                  <p className="mt-1 text-sm text-red-500">{errors.captcha}</p>
+                )}
+              </div>
+
+              <div>
+                <Button
+                  type="submit"
+                  disabled={isLoading}
+                  className="w-full"
                 >
-                  로그인하기
-                </Link>
-              </p>
-            </div>
-          </form>
+                  {isLoading ? '가입 중...' : '회원가입'}
+                </Button>
+              </div>
+
+              <div className="text-center">
+                <p className="text-sm text-gray-600">
+                  이미 계정이 있으신가요?{' '}
+                  <Link
+                    to="/login"
+                    className="font-medium text-blue-600 hover:text-blue-500"
+                  >
+                    로그인하기
+                  </Link>
+                </p>
+              </div>
+            </form>
+          )}
         </Card>
       </div>
     </div>
