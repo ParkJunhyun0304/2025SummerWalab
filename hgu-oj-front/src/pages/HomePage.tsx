@@ -113,11 +113,14 @@ export const HomePage: React.FC = () => {
   const navigate = useNavigate();
   const { isAuthenticated } = useAuthStore();
 
+  const [isUserVerified, setIsUserVerified] = React.useState(false);
+
   React.useEffect(() => {
     const checkUserInfo = async () => {
       if (isAuthenticated) {
         try {
           await userService.getUserDetail();
+          setIsUserVerified(true);
         } catch (error: any) {
           // 404 means user info is missing in MS server
           if (error.response?.status === 404) {
@@ -136,6 +139,7 @@ export const HomePage: React.FC = () => {
     queryKey: ['home', 'recent-problems'],
     queryFn: () => problemService.getMicroProblemList({ page: 1, limit: 5, sortField: 'number', sortOrder: 'desc' }),
     staleTime: 60 * 1000,
+    enabled: isUserVerified,
   });
 
   const {
@@ -145,6 +149,7 @@ export const HomePage: React.FC = () => {
     queryKey: ['home', 'recent-solved'],
     queryFn: () => submissionService.getRecentSubmissions({ limit: 5 }),
     staleTime: 30 * 1000,
+    enabled: isUserVerified,
   });
 
   const {
@@ -154,6 +159,7 @@ export const HomePage: React.FC = () => {
     queryKey: ['home', 'running-contests'],
     queryFn: () => contestService.getContests({ page: 1, limit: 5, status: '0' }),
     staleTime: 60 * 1000,
+    enabled: isUserVerified,
   });
 
   const {
@@ -163,6 +169,7 @@ export const HomePage: React.FC = () => {
     queryKey: ['home', 'upcoming-contests'],
     queryFn: () => contestService.getContests({ page: 1, limit: 5, status: '1' }),
     staleTime: 60 * 1000,
+    enabled: isUserVerified,
   });
 
   const recentProblems = useMemo<RecentProblem[]>(() => {
@@ -218,6 +225,7 @@ export const HomePage: React.FC = () => {
     queryKey: ['home', 'user-rankings'],
     queryFn: () => rankingService.getUserRankings({ page: 1, limit: 5 }),
     staleTime: 60 * 1000,
+    enabled: isUserVerified,
   });
 
   const {
@@ -227,6 +235,7 @@ export const HomePage: React.FC = () => {
     queryKey: ['home', 'organization-rankings'],
     queryFn: () => rankingService.getOrganizationRankings({ page: 1, limit: 5 }),
     staleTime: 60 * 1000,
+    enabled: isUserVerified,
   });
 
   const organizationRanking = useMemo(
