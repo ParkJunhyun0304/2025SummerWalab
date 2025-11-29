@@ -8,20 +8,33 @@ export const authService = {
   login: async (credentials: LoginForm): Promise<LoginResponse> => {
     const response = await api.post<string>('/login', credentials);
     console.log('Login API Response:', response);
-    
+
     const result = {
       success: response.success && response.data === "Succeeded",
       data: response.data,
       message: response.message
     };
-    
+
+    console.log('Login Service Result:', result);
     console.log('Login Service Result:', result);
     return result;
   },
 
+  // Google Login Callback
+  googleLoginCallback: async (code: string): Promise<any> => {
+    const response = await api.get<any>(`/oauth/callback/?code=${code}`);
+    console.log('Google Login Callback Response:', response);
+
+    return {
+      success: response.success,
+      data: response.data,
+      message: response.message
+    };
+  },
+
   // SSO 토큰 발급
   getSSOToken: async (): Promise<string> => {
-    const response = await api.get<{token: string}>('/sso');
+    const response = await api.get<{ token: string }>('/sso');
     return response.data.token;
   },
 

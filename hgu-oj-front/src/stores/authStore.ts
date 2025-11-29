@@ -86,6 +86,7 @@ interface AuthActions {
   setLoading: (loading: boolean) => void;
   setError: (error: string | null) => void;
   clearError: () => void;
+  getProfile: () => Promise<UserProfile | null>;
 }
 
 export const useAuthStore = create<AuthState & AuthActions>()(
@@ -100,7 +101,7 @@ export const useAuthStore = create<AuthState & AuthActions>()(
       // Actions
       login: async (username: string, password: string, tfaCode?: string) => {
         set({ isLoading: true, error: null });
-        
+
         try {
           // 1. Online Judge 로그인
           console.log('Starting login process...');
@@ -144,7 +145,7 @@ export const useAuthStore = create<AuthState & AuthActions>()(
 
       logout: async () => {
         set({ isLoading: true });
-        
+
         try {
           await authService.logout();
         } catch (error) {
@@ -176,14 +177,14 @@ export const useAuthStore = create<AuthState & AuthActions>()(
 
       checkAuth: async () => {
         const { isAuthenticated } = get();
-        
+
         // 이미 인증되지 않은 상태라면 확인하지 않음
         if (!isAuthenticated) {
           return;
         }
-        
+
         set({ isLoading: true });
-        
+
         try {
           const isStillAuthenticated = await authService.checkAuth();
           if (isStillAuthenticated) {
@@ -212,12 +213,23 @@ export const useAuthStore = create<AuthState & AuthActions>()(
       clearError: () => {
         set({ error: null });
       },
+
+      getProfile: async () => {
+        try {
+          const user = await authService.getProfile();
+          set({ user, isAuthenticated: true });
+          return user;
+        } catch (error) {
+          console.error('Failed to get profile:', error);
+          return null;
+        }
+      },
     }),
     {
       name: 'auth-storage',
-      partialize: (state) => ({ 
-        user: state.user, 
-        isAuthenticated: state.isAuthenticated 
+      partialize: (state) => ({
+        user: state.user,
+        isAuthenticated: state.isAuthenticated
       }),
     }
   )

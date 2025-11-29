@@ -33,6 +33,7 @@ export default defineConfig(({ mode }) => {
   const msBase = env.VITE_MS_API_BASE || 'http://localhost:9000/api'
 
   return {
+    envPrefix: ['VITE_', 'VUE_APP_'],
     plugins: [react()],
     resolve: {
       alias: {

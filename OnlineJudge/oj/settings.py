@@ -31,9 +31,9 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 load_dotenv(os.path.join(BASE_DIR, ".env"))
-GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
-GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET")
-GOOGLE_REDIRECT_URI = os.getenv("GOOGLE_REDIRECT_URI")
+GOOGLE_CLIENT_ID = os.getenv("VUE_APP_GOOGLE_CLIENT_ID")
+GOOGLE_CLIENT_SECRET = os.getenv("VUE_APP_GOOGLE_CLIENT_SECRET")
+GOOGLE_REDIRECT_URI = os.getenv("VUE_APP_GOOGLE_REDIRECT_URI")
 
 # Applications
 VENDOR_APPS = [
