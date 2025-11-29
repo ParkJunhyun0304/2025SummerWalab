@@ -175,7 +175,12 @@ export const ContestOverviewTab: React.FC<ContestOverviewTabProps> = ({
               placeholder="대회 비밀번호"
               disabled={passwordPending}
             />
-            <Button type="submit" loading={passwordPending} disabled={passwordPending}>
+            <Button
+              type="submit"
+              loading={passwordPending}
+              disabled={passwordPending}
+              className="whitespace-nowrap px-4"
+            >
               입장하기
             </Button>
           </form>
