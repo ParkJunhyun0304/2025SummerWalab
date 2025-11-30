@@ -293,6 +293,10 @@ export const ProblemDetailPage: React.FC = () => {
   const problem = contestContextId ? contestProblem : fallbackProblem;
   const isLoading = contestContextId ? contestProblemLoading : regularProblemLoading;
   const error = contestContextId ? contestProblemError : regularProblemError;
+  const allowedLanguages = useMemo(
+    () => contestProblem?.languages ?? problem?.languages ?? [],
+    [contestProblem?.languages, problem?.languages],
+  );
   const queryClient = useQueryClient();
   const [executionResult, setExecutionResult] = useState<ExecutionResult | undefined>();
   const [isExecuting, setIsExecuting] = useState(false);
@@ -1581,6 +1585,7 @@ export const ProblemDetailPage: React.FC = () => {
           <CodeEditor
             problemId={problem?.id}
             samples={problem.samples}
+            allowedLanguages={allowedLanguages}
             onExecute={handleExecute}
             onSubmit={handleSubmit}
             executionResult={executionResult}

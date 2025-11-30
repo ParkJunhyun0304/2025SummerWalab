@@ -9,6 +9,7 @@ import { codeAutoSaveService } from '../../services/codeAutoSaveService';
 interface CodeEditorProps {
   initialCode?: string;
   initialLanguage?: string;
+  allowedLanguages?: string[];
   problemId?: number;
   samples?: Array<{ input: string; output: string }>;
   onCodeChange?: (code: string) => void;
@@ -129,6 +130,7 @@ type PendingSaveRequest = {
 export const CodeEditor: React.FC<CodeEditorProps> = ({
   initialCode = '',
   initialLanguage = 'javascript',
+  allowedLanguages,
   problemId,
   samples,
   onCodeChange,
@@ -144,6 +146,25 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
 }) => {
   const autoSaveIntervalMs = useMemo(() => resolveAutoSaveIntervalMs(), []);
   const autoSaveCacheTtlMs = useMemo(() => resolveAutoSaveCacheTtlMs(), []);
+
+  const availableLanguageOptions = useMemo(() => {
+    if (!allowedLanguages || allowedLanguages.length === 0) {
+      return languageOptions;
+    }
+    const normalized = new Set(allowedLanguages.map((lang) => String(lang).trim().toLowerCase()));
+    const matchMap: Record<string, string[]> = {
+      javascript: ['javascript', 'js'],
+      python: ['python', 'python3', 'py', 'python 3'],
+      java: ['java'],
+      cpp: ['cpp', 'c++'],
+      c: ['c'],
+    };
+    const filtered = languageOptions.filter((opt) => {
+      const candidates = matchMap[opt.value] ?? [opt.value];
+      return candidates.some((c) => normalized.has(c));
+    });
+    return filtered.length > 0 ? filtered : languageOptions;
+  }, [allowedLanguages]);
   // Storage keys
   const codeKey = useMemo(() => `oj:code:${problemId ?? 'global'}:`, [problemId]);
   const langKey = useMemo(() => `oj:lang:${problemId ?? 'global'}`, [problemId]);
@@ -151,12 +172,26 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
 
   const [language, setLanguage] = useState(() => {
     const saved = localStorage.getItem(langKey);
-    return saved || initialLanguage;
+    const initial = saved || initialLanguage;
+    const allowedValues = availableLanguageOptions.map((opt) => opt.value);
+    if (allowedValues.length > 0 && !allowedValues.includes(initial)) {
+      return allowedValues[0];
+    }
+    return allowedValues.length > 0 ? initial : 'javascript';
   });
   const [code, setCode] = useState(() => {
     if (initialCode) return initialCode;
     return defaultCode[language] || '';
   });
+
+  useEffect(() => {
+    if (!availableLanguageOptions.some((opt) => opt.value === language)) {
+      const fallbackLang = availableLanguageOptions[0]?.value ?? 'javascript';
+      setLanguage(fallbackLang);
+      const nextCode = initialCode || defaultCode[fallbackLang] || '';
+      setCode(nextCode);
+    }
+  }, [availableLanguageOptions, language, initialCode]);
 
   const [input, setInput] = useState('');
   const [editorTheme, setEditorTheme] = useState<'light' | 'dark'>(() => {
@@ -578,9 +613,9 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
           <select
             value={language}
             onChange={(e) => handleLanguageChange(e.target.value)}
-            className={controlSelectClasses()}
+            className={controlSelectClasses('sm')}
           >
-            {languageOptions.map((option) => (
+            {availableLanguageOptions.map((option) => (
               <option key={option.value} value={option.value}>
                 {option.label}
               </option>
