@@ -103,9 +103,14 @@ except KeyboardInterrupt:
 PY
 
 
+echo "[entrypoint] ⚠️ ONE-TIME RESET: Wiping database as requested..."
+python reset_db.py
+
+
 echo "[entrypoint] Checking for schema changes (Auto-DDL)..."
-# Try to generate a migration. If no changes, env.py will skip creating a file.
-alembic revision --autogenerate -m "auto_generated_on_startup" || true
+# Try to generate a migration. If no changes, alembic might exit with 0 or non-zero depending on config,
+# but we want to proceed regardless.
+alembic revision --autogenerate -m "auto_generated_on_startup" || echo "[entrypoint] No changes detected or revision generation failed (safe to ignore if no changes)."
 
 echo "[entrypoint] Running database migrations..."
 alembic upgrade head
