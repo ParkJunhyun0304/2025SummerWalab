@@ -593,7 +593,8 @@ export const ProblemDetailPage: React.FC = () => {
       const memoryRaw = Number(last?.memory ?? (raw as any).memory ?? 0);
       const memoryUsageKb = normalizeMemoryToKB(Number.isFinite(memoryRaw) ? memoryRaw : 0) ?? 0;
       const status: ExecutionResult['status'] = errorMsg ? 'ERROR' : ((last?.exit_code ?? 0) === 0 ? 'SUCCESS' : 'ERROR');
-      const finalOutput = output || (!errorMsg ? JSON.stringify(raw, null, 2) : '');
+      // Don't render raw response when there is no stdout; show nothing on success+empty output
+      const finalOutput = output || '';
       setExecutionResult({
         output: finalOutput,
         error: errorMsg,
