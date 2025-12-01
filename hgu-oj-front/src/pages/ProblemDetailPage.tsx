@@ -9,6 +9,8 @@ import { resolveProblemStatus } from '../utils/problemStatus';
 import { PROBLEM_STATUS_LABELS, PROBLEM_SUMMARY_LABELS } from '../constants/problemStatus';
 import { CodeEditor } from '../components/organisms/CodeEditor';
 import { Button } from '../components/atoms/Button';
+import { AlertModal } from '../components/molecules/AlertModal';
+import { CollapsibleSection } from '../components/molecules/CollapsibleSection';
 import { Contest, ExecutionResult, Problem } from '../types';
 import { executionService } from '../services/executionService';
 import { submissionService, SubmissionDetail, SubmissionListItem } from '../services/submissionService';
@@ -318,14 +320,41 @@ export const ProblemDetailPage: React.FC = () => {
   const submissionPollAttemptsRef = useRef(0);
   const copyFeedbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
+
   const contestTimeOffsetRef = useRef(0);
+
+  const [alertModal, setAlertModal] = useState<{
+    isOpen: boolean;
+    message: string;
+    title?: string;
+    type?: 'success' | 'error' | 'warning' | 'info';
+    onClose?: () => void;
+  }>({
+    isOpen: false,
+    message: '',
+    type: 'info',
+  });
+
+  const closeAlertModal = useCallback(() => {
+    setAlertModal((prev) => {
+      return { ...prev, isOpen: false, onClose: undefined };
+    });
+    if (alertModal.onClose) {
+      alertModal.onClose();
+    }
+  }, [alertModal]);
 
   const requireAuthentication = useCallback((): boolean => {
     if (isAuthenticated) {
       return true;
     }
-    alert('로그인이 필요합니다. 로그인 페이지로 이동합니다.');
-    navigate('/login', { replace: true });
+    setAlertModal({
+      isOpen: true,
+      title: '로그인 필요',
+      message: '로그인이 필요합니다. 로그인 페이지로 이동합니다.',
+      type: 'warning',
+      onClose: () => navigate('/login', { replace: true }),
+    });
     return false;
   }, [isAuthenticated, navigate]);
 
@@ -640,9 +669,7 @@ export const ProblemDetailPage: React.FC = () => {
         : typeof submissionIdRaw === 'string'
           ? submissionIdRaw.trim().length > 0
           : false;
-      const successMessage = hasSubmissionId
-        ? `제출이 완료되었습니다! (제출 번호: ${submissionIdRaw})`
-        : '제출이 완료되었습니다!';
+      const successMessage = '제출이 완료되었습니다!';
       setActiveSection('submissions');
       if (hasSubmissionId && submissionIdRaw != null) {
         setManualStatus('SUBMITTING');
@@ -653,10 +680,20 @@ export const ProblemDetailPage: React.FC = () => {
       } else {
         setManualStatus('SUBMITTED');
       }
-      alert(successMessage);
+      setAlertModal({
+        isOpen: true,
+        title: '제출 완료',
+        message: successMessage,
+        type: 'success',
+      });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : '제출 중 오류가 발생했습니다.';
-      alert(message);
+      setAlertModal({
+        isOpen: true,
+        title: '제출 실패',
+        message: message,
+        type: 'error',
+      });
     } finally {
       setIsSubmitting(false);
     }
@@ -697,11 +734,10 @@ export const ProblemDetailPage: React.FC = () => {
   const samplePreClasses = isDarkTheme
     ? 'bg-slate-800 text-slate-100 border border-slate-700'
     : 'bg-gray-100 text-gray-900';
-  const sampleCopyVariant = isDarkTheme ? 'outline' : 'ghost';
-  const sampleCopyButtonClass = isDarkTheme
-    ? 'px-2 py-1 text-xs text-slate-200 border-slate-500 hover:bg-slate-800'
-    : 'px-2 py-1 text-xs';
-  const copyFeedbackClass = isDarkTheme ? 'text-emerald-400' : 'text-green-600';
+  const sampleCopyButtonClass = `h-6 px-2 text-xs ${isDarkTheme
+    ? 'hover:bg-slate-700 border-slate-700'
+    : 'hover:bg-gray-100 border-gray-200'
+    }`;
   const tabBaseClass = 'px-3 py-1.5 text-sm font-medium rounded-md transition-colors';
   const tabActiveClass = isDarkTheme
     ? 'bg-slate-700 text-slate-100 border border-slate-500 shadow'
@@ -1091,9 +1127,8 @@ export const ProblemDetailPage: React.FC = () => {
             type="button"
             key={String(submission.id ?? index)}
             onClick={() => handleSubmissionCardClick(submission)}
-            className={`w-full text-left rounded-lg border p-4 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 ${
-              isActive ? activeCardClass : baseCardClass
-            }`}
+            className={`w-full text-left rounded-lg border p-4 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 ${isActive ? activeCardClass : baseCardClass
+              }`}
           >
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex-1 min-w-0 space-y-1">
@@ -1392,54 +1427,52 @@ export const ProblemDetailPage: React.FC = () => {
 
               {activeSection === 'description' ? (
                 <>
-                  <section>
-                    <h2 className={`text-lg font-semibold mb-3 ${headingTextClass}`}>문제 설명</h2>
-                    <div className={proseClass}>
-                      <div dangerouslySetInnerHTML={{ __html: problem.description }} />
-                    </div>
-                  </section>
+                  <div className="mb-6">
+                    <CollapsibleSection title="문제 설명" headingClassName={headingTextClass}>
+                      <div className={`${proseClass} max-w-4xl leading-relaxed`}>
+                        <div dangerouslySetInnerHTML={{ __html: problem.description }} />
+                      </div>
+                    </CollapsibleSection>
+                  </div>
 
                   {problem.inputDescription && (
-                    <section>
-                      <h2 className={`text-lg font-semibold mb-3 ${headingTextClass}`}>입력 형식</h2>
-                      <div className={proseClass}>
+                    <CollapsibleSection title="입력" headingClassName={headingTextClass}>
+                      <div className={`${proseClass} max-w-4xl leading-relaxed prose-h3:text-base prose-h3:font-medium prose-h3:mt-4 prose-h3:mb-2`}>
                         <div dangerouslySetInnerHTML={{ __html: problem.inputDescription }} />
                       </div>
-                    </section>
+                    </CollapsibleSection>
                   )}
 
                   {problem.outputDescription && (
-                    <section>
-                      <h2 className={`text-lg font-semibold mb-3 ${headingTextClass}`}>출력 형식</h2>
-                      <div className={proseClass}>
+                    <CollapsibleSection title="출력" headingClassName={headingTextClass}>
+                      <div className={`${proseClass} max-w-4xl leading-relaxed prose-h3:text-base prose-h3:font-medium prose-h3:mt-4 prose-h3:mb-2`}>
                         <div dangerouslySetInnerHTML={{ __html: problem.outputDescription }} />
                       </div>
-                    </section>
+                    </CollapsibleSection>
                   )}
 
                   {problem.samples && problem.samples.length > 0 && (
-                    <section>
-                      <h2 className={`text-lg font-semibold mb-3 ${headingTextClass}`}>입출력 예제</h2>
-                      <div className="space-y-4">
+                    <CollapsibleSection title="입출력 예제" headingClassName={headingTextClass}>
+                      <div className="grid gap-6">
                         {problem.samples.map((sample, index) => (
-                          <div key={index} className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div>
-                              <div className="flex items-center justify-between mb-2">
-                                <h3 className="font-medium">입력 {index + 1}</h3>
+                          <div key={index} className="grid gap-4 lg:grid-cols-2">
+                            {/* Input */}
+                            <div className="min-w-0">
+                              <div className="mb-2 flex items-center justify-between">
+                                <span className={`text-sm font-semibold ${subtleTextClass}`}>입력 {index + 1}</span>
                                 <div className="flex items-center gap-2">
-                                  {copiedKey === `sample-${index}-input` && (
-                                    <span className={`text-[11px] ${copyFeedbackClass}`}>복사됨!</span>
-                                  )}
                                   <Button
-                                    variant={sampleCopyVariant}
+                                    variant="ghost"
                                     size="sm"
-                                    onClick={(e) => {
-                                      e?.stopPropagation?.();
-                                      copyToClipboard(sample.input, `sample-${index}-input`);
-                                    }}
+                                    onClick={() => copyToClipboard(sample.input, `input-${index}`)}
+                                    disabled={!!copiedKey}
                                     className={sampleCopyButtonClass}
                                   >
-                                    복사
+                                    {copiedKey === `input-${index}` ? (
+                                      <span className="text-green-600 font-medium">복사됨</span>
+                                    ) : (
+                                      '복사'
+                                    )}
                                   </Button>
                                 </div>
                               </div>
@@ -1447,23 +1480,23 @@ export const ProblemDetailPage: React.FC = () => {
                                 {sample.input}
                               </pre>
                             </div>
-                            <div>
-                              <div className="flex items-center justify-between mb-2">
-                                <h3 className="font-medium">출력 {index + 1}</h3>
+                            {/* Output */}
+                            <div className="min-w-0">
+                              <div className="mb-2 flex items-center justify-between">
+                                <span className={`text-sm font-semibold ${subtleTextClass}`}>출력 {index + 1}</span>
                                 <div className="flex items-center gap-2">
-                                  {copiedKey === `sample-${index}-output` && (
-                                    <span className={`text-[11px] ${copyFeedbackClass}`}>복사됨!</span>
-                                  )}
                                   <Button
-                                    variant={sampleCopyVariant}
+                                    variant="ghost"
                                     size="sm"
-                                    onClick={(e) => {
-                                      e?.stopPropagation?.();
-                                      copyToClipboard(sample.output, `sample-${index}-output`);
-                                    }}
+                                    onClick={() => copyToClipboard(sample.output, `output-${index}`)}
+                                    disabled={!!copiedKey}
                                     className={sampleCopyButtonClass}
                                   >
-                                    복사
+                                    {copiedKey === `output-${index}` ? (
+                                      <span className="text-green-600 font-medium">복사됨</span>
+                                    ) : (
+                                      '복사'
+                                    )}
                                   </Button>
                                 </div>
                               </div>
@@ -1474,14 +1507,13 @@ export const ProblemDetailPage: React.FC = () => {
                           </div>
                         ))}
                       </div>
-                    </section>
+                    </CollapsibleSection>
                   )}
 
                   {problem.hint && (
-                    <section>
-                      <h2 className={`text-lg font-semibold mb-3 ${headingTextClass}`}>힌트</h2>
+                    <CollapsibleSection title="힌트" headingClassName={headingTextClass}>
                       <p className="whitespace-pre-wrap">{problem.hint}</p>
-                    </section>
+                    </CollapsibleSection>
                   )}
                 </>
               ) : activeSection === 'problem-list' ? (
@@ -1514,15 +1546,14 @@ export const ProblemDetailPage: React.FC = () => {
                             key={`${itemKey ?? displayIdentifier}-${item.id}`}
                             type="button"
                             onClick={() => !isCurrentProblem && openProblemFromList(item)}
-                            className={`w-full rounded-lg border px-3 py-2 text-left text-sm transition ${
-                              isCurrentProblem
-                                ? isDarkTheme
-                                  ? 'border-blue-500 bg-blue-900/40 text-blue-100'
-                                  : 'border-blue-500 bg-blue-50 text-blue-700'
-                                : isDarkTheme
-                                  ? 'border-slate-700 bg-slate-900/70 hover:bg-slate-800'
-                                  : 'border-gray-200 bg-white hover:bg-gray-50'
-                            } ${isCurrentProblem ? 'cursor-default' : 'cursor-pointer'}`}
+                            className={`w-full rounded-lg border px-3 py-2 text-left text-sm transition ${isCurrentProblem
+                              ? isDarkTheme
+                                ? 'border-blue-500 bg-blue-900/40 text-blue-100'
+                                : 'border-blue-500 bg-blue-50 text-blue-700'
+                              : isDarkTheme
+                                ? 'border-slate-700 bg-slate-900/70 hover:bg-slate-800'
+                                : 'border-gray-200 bg-white hover:bg-gray-50'
+                              } ${isCurrentProblem ? 'cursor-default' : 'cursor-pointer'}`}
                           >
                             <div className="flex items-center justify-between gap-4">
                               <div className="flex-1 min-w-0">
@@ -1560,12 +1591,12 @@ export const ProblemDetailPage: React.FC = () => {
           role="separator"
           aria-orientation="vertical"
           onMouseDown={() => !leftCollapsed && setIsDraggingLR(true)}
-          className="oj-resizer-v flex items-center justify-center select-none"
+          className="oj-resizer-v flex items-center justify-center select-none group"
           style={{ userSelect: 'none' }}
         >
           <button
             aria-label={leftCollapsed ? '좌측 패널 펼치기' : '좌측 패널 접기'}
-            className="oj-side-handle small blend"
+            className={`oj-side-handle small blend transition-opacity duration-200 ${leftCollapsed ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
             onClick={(e) => { e.stopPropagation(); setLeftCollapsed(v => !v); }}
             title={leftCollapsed ? '펼치기' : '접기'}
           >
@@ -1614,11 +1645,10 @@ export const ProblemDetailPage: React.FC = () => {
               <button
                 type="button"
                 onClick={closeSubmissionModal}
-                className={`rounded-md px-3 py-1 text-sm font-medium transition ${
-                  isDarkTheme
-                    ? 'bg-slate-800 text-slate-200 hover:bg-slate-700'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                }`}
+                className={`rounded-md px-3 py-1 text-sm font-medium transition ${isDarkTheme
+                  ? 'bg-slate-800 text-slate-200 hover:bg-slate-700'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
               >
                 닫기
               </button>
@@ -1654,10 +1684,9 @@ export const ProblemDetailPage: React.FC = () => {
                   </div>
                   <div>
                     <h4 className={`mb-2 font-semibold ${isDarkTheme ? 'text-slate-100' : 'text-gray-900'}`}>소스 코드</h4>
-                    <pre className={`overflow-x-auto rounded-md border px-4 py-3 text-xs leading-5 ${
-                      isDarkTheme ? 'border-slate-700 bg-slate-950 text-slate-100' : 'border-gray-200 bg-gray-900 text-gray-100'
-                    }`}>
-{modalCodeDisplay}
+                    <pre className={`overflow-x-auto rounded-md border px-4 py-3 text-xs leading-5 ${isDarkTheme ? 'border-slate-700 bg-slate-950 text-slate-100' : 'border-gray-200 bg-gray-900 text-gray-100'
+                      }`}>
+                      {modalCodeDisplay}
                     </pre>
                   </div>
                 </>
@@ -1670,6 +1699,14 @@ export const ProblemDetailPage: React.FC = () => {
           </div>
         </div>
       )}
+
+      <AlertModal
+        isOpen={alertModal.isOpen}
+        onClose={closeAlertModal}
+        title={alertModal.title}
+        message={alertModal.message}
+        type={alertModal.type}
+      />
     </div>
   );
 };
