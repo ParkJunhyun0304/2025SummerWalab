@@ -1,4 +1,5 @@
 import { api, apiClient, MS_API_BASE } from './api';
+import axios from 'axios';
 import {
   ApiResponse,
   Workbook,
@@ -148,8 +149,8 @@ export interface UpdateUserPayload {
   password?: string;
   admin_type: string;
   problem_permission: string;
-  two_factor_auth?: boolean;
-  open_api?: boolean;
+  two_factor_auth: boolean;
+  open_api: boolean;
   is_disabled?: boolean;
 }
 
@@ -467,6 +468,25 @@ export const adminService = {
       ...data,
       real_tfa: data?.two_factor_auth,
     } as AdminUser;
+  },
+
+  getUserDetailFromMS: async (userId: number): Promise<{
+    user_id: number;
+    name: string;
+    student_id: string;
+    major_id: number;
+  }> => {
+    // Use MS_API_BASE from env (or default) as requested by user
+    // This allows direct connection to MS server (e.g. http://localhost:9000/api) if configured
+    const baseUrl = MS_API_BASE.endsWith('/') ? MS_API_BASE.slice(0, -1) : MS_API_BASE;
+    const response = await axios.get<{
+      user_id: number;
+      name: string;
+      student_id: string;
+      major_id: number;
+    }>(`${baseUrl}/user/data/${userId}`, { withCredentials: true });
+
+    return response.data;
   },
 
   deleteUser: async (userId: number | number[]): Promise<void> => {
