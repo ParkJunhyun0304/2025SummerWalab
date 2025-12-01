@@ -356,9 +356,7 @@ export const AdminPage: React.FC = () => {
       case 'contest-edit':
         return <ContestEditSection />;
       case 'user': {
-        const totalPages = Math.max(1, Math.ceil(userTotal / USER_PAGE_SIZE));
-        const canPrev = userPage > 1;
-        const canNext = userPage < totalPages;
+
 
         return (
           <Card padding="lg">
