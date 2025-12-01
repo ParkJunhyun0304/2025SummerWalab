@@ -2,7 +2,6 @@ import React, { useEffect, useState } from 'react';
 import { Button } from '../atoms/Button';
 import { Input } from '../atoms/Input';
 import { adminService } from '../../services/adminService';
-import { Organization } from '../../types';
 
 type OrganizationModalProps = {
     isOpen: boolean;
@@ -39,8 +38,8 @@ export const OrganizationModal: React.FC<OrganizationModalProps> = ({ isOpen, on
                 const fetchDetail = async () => {
                     try {
                         // TODO: Implement getOrganizationDetail in adminService for better performance
-                        const { items } = await adminService.getOrganizations({ page: 1, size: 1000 });
-                        const org = items.find(o => o.id === organizationId);
+                        const response = await adminService.getOrganizations({ page: 1, limit: 1000 });
+                        const org = response.items.find(o => o.id === organizationId);
                         if (org) {
                             setFormState({
                                 name: org.name,

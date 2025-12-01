@@ -22,7 +22,7 @@ export const OrganizationManager: React.FC = () => {
         setLoading(true);
         setError(null);
         try {
-            const response = await adminService.getOrganizations({ page: p, limit: 20, keyword: k });
+            const response = await adminService.getOrganizations({ page: p, limit: 10 });
             setOrgList(response.items);
             setTotal(response.total);
             setPage(p);
