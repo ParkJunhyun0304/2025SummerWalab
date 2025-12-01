@@ -100,7 +100,7 @@ services:
       - REDIS_URL=redis://oj-redis:6379
       - REDIS_SESSION_PREFIX="ms:session:"
       - TOKEN_COOKIE_NAME=ms_token
-      - LOCAL_TOKEN_TTL_SECONDS=1800
+      - LOCAL_TOKEN_TTL_SECONDS=7200
       - TEST_CASE_DATA_PATH=/test_case 
       - DB_USER=${POSTGRES_USER}
       - DB_PASSWORD=${POSTGRES_PASSWORD}
