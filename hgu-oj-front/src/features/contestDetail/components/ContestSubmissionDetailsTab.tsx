@@ -417,7 +417,7 @@ export const ContestSubmissionDetailsTab: React.FC<ContestSubmissionDetailsTabPr
                         ? 'bg-green-100 text-green-700'
                         : status === 'tried'
                           ? 'bg-amber-50 text-amber-700'
-                          : 'bg-gray-50 text-gray-400';
+                          : 'bg-gray-100 text-gray-400';
                     const labelScore = info?.score;
                     const label = labelScore != null ? `${labelScore}` : status === 'ac' ? 'AC' : status === 'tried' ? 'T' : '-';
                     const handleClick = () => {

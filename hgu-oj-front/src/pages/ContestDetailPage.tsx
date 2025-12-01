@@ -389,7 +389,7 @@ export const ContestDetailPage: React.FC = () => {
                   }}
                   disabled={disabled}
                   aria-disabled={disabled}
-                  className={`w-full text-left px-4 py-3 rounded-lg font-medium transition-colors ${isActive ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 hover:bg-blue-50'
+                  className={`w-full min-w-[140px] text-center whitespace-nowrap px-4 py-3 rounded-lg font-medium transition-colors ${isActive ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 hover:bg-blue-50'
                     } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
                 >
                   {tab.label}
