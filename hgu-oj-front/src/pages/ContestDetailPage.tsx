@@ -95,7 +95,7 @@ export const ContestDetailPage: React.FC = () => {
     [timeLeft],
   );
 
-  const protectedContentRef = useRef<() => void>(() => {});
+  const protectedContentRef = useRef<() => void>(() => { });
   const accessState = useContestAccessState({
     contestId,
     contest,
@@ -134,10 +134,13 @@ export const ContestDetailPage: React.FC = () => {
     getContestLockMessage,
   } = accessState;
 
+  const [isAnnouncementModalOpen, setIsAnnouncementModalOpen] = useState(false);
+
   const canFetchAnnouncements = canManageAnnouncements || (!contestLockedForUser && (hasAccess || hasContestAdminOverride));
   const { refetchAnnouncements, ...announcementManager } = useContestAnnouncementsManager({
     contestId,
     canFetch: canFetchAnnouncements,
+    onSuccess: () => setIsAnnouncementModalOpen(false),
   });
 
   const shouldLoadRank = canViewProtectedContent && (activeTab === 'rank' || activeTab === 'problems' || activeTab === 'submission-details');
@@ -192,7 +195,15 @@ export const ContestDetailPage: React.FC = () => {
     }
   }, [activeTab, userManagement]);
 
-  const announcementsNode = canFetchAnnouncements ? <ContestAnnouncementsSection canManage={canManageAnnouncements} manager={announcementManager} /> : null;
+  const announcementsNode = canFetchAnnouncements ? (
+    <ContestAnnouncementsSection
+      canManage={canManageAnnouncements}
+      manager={announcementManager}
+      isModalOpen={isAnnouncementModalOpen}
+      onOpenModal={() => setIsAnnouncementModalOpen(true)}
+      onCloseModal={() => setIsAnnouncementModalOpen(false)}
+    />
+  ) : null;
 
   const disabledTabs = useCallback(
     (tabId: ContestTab) => {
@@ -378,9 +389,8 @@ export const ContestDetailPage: React.FC = () => {
                   }}
                   disabled={disabled}
                   aria-disabled={disabled}
-                  className={`w-full text-left px-4 py-3 rounded-lg font-medium transition-colors ${
-                    isActive ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 hover:bg-blue-50'
-                  } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  className={`w-full text-left px-4 py-3 rounded-lg font-medium transition-colors ${isActive ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 hover:bg-blue-50'
+                    } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
                 >
                   {tab.label}
                 </button>

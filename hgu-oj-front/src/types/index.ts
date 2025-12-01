@@ -170,6 +170,10 @@ export interface WorkbookDetail extends Workbook {
   problems: WorkbookProblem[];
 }
 
+export interface AdminWorkbook extends Workbook {
+  visible: boolean;
+}
+
 // API 응답 타입
 export interface ApiResponse<T> {
   success: boolean;
