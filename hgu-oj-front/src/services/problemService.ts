@@ -367,6 +367,9 @@ export const problemService = {
   // 문제 목록 조회 (기존 OJ 백엔드)
   getProblems: fetchOjProblemList,
 
+  // OJ 백엔드 문제 목록 (강제)
+  getOjProblems: fetchOjProblemList,
+
   // 마이크로서비스 기반 문제 목록
   getMicroProblemList: fetchMicroProblemList,
 
