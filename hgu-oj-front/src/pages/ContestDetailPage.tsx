@@ -143,7 +143,7 @@ export const ContestDetailPage: React.FC = () => {
     onSuccess: () => setIsAnnouncementModalOpen(false),
   });
 
-  const shouldLoadRank = canViewProtectedContent && (activeTab === 'rank' || activeTab === 'problems' || activeTab === 'submission-details');
+  const shouldLoadRank = canViewProtectedContent;
   const {
     data: rankData,
     isLoading: rankLoading,
@@ -152,6 +152,11 @@ export const ContestDetailPage: React.FC = () => {
   } = useContestRank(contestId, shouldLoadRank);
 
   const rankEntries = useMemo<ContestRankEntry[]>(() => rankData?.results ?? [], [rankData]);
+  const myScore = useMemo(() => {
+    if (!authUser?.id) return 0;
+    const myEntry = rankEntries.find((entry) => entry.user.id === authUser.id);
+    return myEntry?.totalScore ?? 0;
+  }, [rankEntries, authUser?.id]);
 
   const problemsController = useContestProblemsController({
     contestId,
@@ -326,7 +331,7 @@ export const ContestDetailPage: React.FC = () => {
           </Card>
         )}
 
-        <div className="mb-8 grid gap-4 lg:grid-cols-[minmax(0,1.45fr)_minmax(220px,0.55fr)]">
+        <div className="mb-8 grid gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(280px,0.8fr)]">
           <div className="rounded-xl bg-slate-100/80 px-6 py-6 text-sm dark:bg-slate-800/70">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-3 max-w-full">
@@ -342,32 +347,46 @@ export const ContestDetailPage: React.FC = () => {
                 <div className="flex flex-wrap items-center gap-3">
                   <h1 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-slate-100 break-words">{contest.title}</h1>
                   {contestStatus && (
-                    <span className="inline-flex items-center rounded-full bg-emerald-100 px-3 py-1 text-sm font-semibold text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-200">
-                      {statusLabel[contestStatus] ?? contestStatus}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className={`inline-flex items-center rounded-full px-3 py-1 text-sm font-semibold ${contestStatus === '0'
+                        ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-200'
+                        : 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300'
+                        }`}>
+                        {statusLabel[contestStatus] ?? contestStatus}
+                      </span>
+                      {contestStatus === '0' && (
+                        <span className="font-mono text-lg font-bold text-emerald-600 dark:text-emerald-400">
+                          {timeLeft}
+                        </span>
+                      )}
+                    </div>
                   )}
                 </div>
               </div>
             </div>
           </div>
 
-          <div className="rounded-xl bg-white px-4 py-6 text-sm shadow-sm ring-1 ring-slate-200 dark:bg-slate-900 dark:ring-slate-700">
-            <div className="grid grid-cols-2 gap-y-4 gap-x-3 sm:gap-x-4">
-              <div>
-                <p className="text-xs font-medium text-slate-500 dark:text-slate-400">전체 문제</p>
-                <p className="text-base font-semibold text-slate-900 dark:text-slate-100">{totalProblems}문제</p>
+          <div className="rounded-xl bg-white px-6 py-5 text-sm shadow-sm ring-1 ring-slate-200 dark:bg-slate-900 dark:ring-slate-700 h-full flex flex-col justify-center">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6 sm:gap-0 sm:divide-x sm:divide-slate-200 dark:sm:divide-slate-700">
+              <div className="flex-1 sm:px-4 first:pl-0 text-center">
+                <p className="text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">전체 문제</p>
+                <p className="mt-1 text-2xl font-bold text-slate-900 dark:text-slate-100">{totalProblems}</p>
               </div>
-              <div>
-                <p className="text-xs font-medium text-emerald-600 dark:text-emerald-400">{PROBLEM_SUMMARY_LABELS.solved}</p>
-                <p className="text-base font-semibold text-emerald-600 dark:text-emerald-400">{solvedProblems}문제</p>
+              <div className="flex-1 sm:px-4 text-center">
+                <p className="text-xs font-medium text-indigo-600 dark:text-indigo-400 uppercase tracking-wider">남은 문제</p>
+                <p className="mt-1 text-2xl font-bold text-indigo-600 dark:text-indigo-400">{remainingProblems}</p>
               </div>
-              <div>
-                <p className="text-xs font-medium text-indigo-600 dark:text-indigo-400">남은 문제</p>
-                <p className="mt-1 text-base font-semibold text-indigo-600 dark:text-indigo-400">{remainingProblems}문제</p>
+              <div className="flex-1 sm:px-4 text-center">
+                <p className="text-xs font-medium text-emerald-600 dark:text-emerald-400 uppercase tracking-wider">{PROBLEM_SUMMARY_LABELS.solved}</p>
+                <p className="mt-1 text-2xl font-bold text-emerald-600 dark:text-emerald-400">{solvedProblems}</p>
               </div>
-              <div>
-                <p className="text-xs font-medium text-rose-600 dark:text-rose-400">{PROBLEM_SUMMARY_LABELS.wrong}</p>
-                <p className="mt-1 text-base font-semibold text-rose-600 dark:text-rose-400">{wrongProblems}문제</p>
+              <div className="flex-1 sm:px-4 text-center">
+                <p className="text-xs font-medium text-rose-600 dark:text-rose-400 uppercase tracking-wider">{PROBLEM_SUMMARY_LABELS.wrong}</p>
+                <p className="mt-1 text-2xl font-bold text-rose-600 dark:text-rose-400">{wrongProblems}</p>
+              </div>
+              <div className="flex-1 sm:px-4 last:pr-0 text-center border-t sm:border-t-0 pt-4 sm:pt-0 border-slate-100 dark:border-slate-800">
+                <p className="text-xs font-medium text-blue-600 dark:text-blue-400 uppercase tracking-wider">내 점수</p>
+                <p className="mt-1 text-2xl font-bold text-blue-600 dark:text-blue-400">{myScore}<span className="text-sm font-normal ml-1">점</span></p>
               </div>
             </div>
           </div>
