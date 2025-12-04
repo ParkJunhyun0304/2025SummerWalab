@@ -78,6 +78,7 @@ services:
       - oj-judge
     volumes:
       - ./data/backend:/data
+      - ./data/backend/log:/data/log
     env_file: .env
     environment:
       - POSTGRES_HOST=${POSTGRES_HOST}
@@ -111,6 +112,7 @@ services:
       - REDIS_CODE_SAVE_PREFIX=ms:autosave
     volumes:
       - ./data/backend/test_case:/test_case:rw 
+      - ./data/micro_service/log:/log 
     depends_on:
       - oj-redis 
       - oj-frontend
