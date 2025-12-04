@@ -16,7 +16,7 @@ import { ContestProblemsTab } from '../features/contestDetail/components/Contest
 import { ContestRankTab } from '../features/contestDetail/components/ContestRankTab';
 import { ContestUserManagementTab } from '../features/contestDetail/components/ContestUserManagementTab';
 import { ContestSubmissionDetailsTab } from '../features/contestDetail/components/ContestSubmissionDetailsTab';
-import type { ContestRankEntry } from '../types';
+
 import type { ContestTab } from '../features/contestDetail/types';
 
 const statusLabel: Record<string, string> = {
