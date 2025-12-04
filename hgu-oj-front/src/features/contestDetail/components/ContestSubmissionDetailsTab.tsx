@@ -436,7 +436,6 @@ export const ContestSubmissionDetailsTab: React.FC<ContestSubmissionDetailsTabPr
                   <div className="text-center font-semibold text-gray-800">{index + 1}</div>
                   <div>
                     <div className="text-sm font-medium text-gray-900">{entry.user.username}</div>
-                    {entry.user.realName && <div className="text-xs text-gray-500">{entry.user.realName}</div>}
                   </div>
                   <div className="text-center text-sm text-gray-700">{entry.acceptedNumber ?? 0}</div>
                   <div className="text-center text-sm text-gray-700">{entry.totalScore ?? 0}</div>
